@@ -2,8 +2,8 @@ import axios from 'axios';
 
 // Use relative path for API requests
 const apiClient = axios.create({
-  // src/api/ubike.js
-  baseURL: 'https://localhost:7135/api/ubike', // Updated to current HTTPS port
+  // Use relative path for production Docker deployment, fallback to dev endpoint
+  baseURL: process.env.NODE_ENV === 'production' ? '/api/ubike' : 'https://localhost:7135/api/ubike',
   withCredentials: false,
   headers: {
     Accept: 'application/json',

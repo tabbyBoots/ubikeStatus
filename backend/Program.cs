@@ -6,15 +6,20 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Kestrel to listen on HTTPS port 7135 with development certificate
-builder.WebHost.ConfigureKestrel(serverOptions => {
-    serverOptions.ListenAnyIP(7135, listenOptions => {
-        listenOptions.UseHttps(httpsOptions => {
-            httpsOptions.SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | 
-                                      System.Security.Authentication.SslProtocols.Tls13;
+// Configure Kestrel - use environment URLs or fallback to development defaults
+if (builder.Environment.IsDevelopment() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
+{
+    // Development mode with hardcoded HTTPS port (when not in Docker)
+    builder.WebHost.ConfigureKestrel(serverOptions => {
+        serverOptions.ListenAnyIP(7135, listenOptions => {
+            listenOptions.UseHttps(httpsOptions => {
+                httpsOptions.SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | 
+                                          System.Security.Authentication.SslProtocols.Tls13;
+            });
         });
     });
-});
+}
+// For Production/Docker, rely on ASPNETCORE_URLS environment variable
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -71,7 +76,15 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors("AllowVueApp");
+
+// Serve static files (for production Docker deployment)
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseAuthorization();
 app.MapControllers();
+
+// Fallback for SPA routing - serve index.html for non-API routes
+app.MapFallbackToFile("index.html");
 
 app.Run();

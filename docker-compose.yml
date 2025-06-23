@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  ubike-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"   # HTTP port
+      - "8443:8443"   # HTTPS port
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=https://+:8443;http://+:8080
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=REDACTED_PASSWORD
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+    restart: unless-stopped
+
+  # Optional: Add a development service that runs both frontend and backend separately
+  ubike-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"  # Frontend
+      - "7135:7135"  # Backend
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      - ./frontend:/app/frontend
+      - ./backend:/app/backend
+      - /app/frontend/node_modules
+      - /app/backend/bin
+      - /app/backend/obj

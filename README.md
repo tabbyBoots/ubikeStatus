@@ -31,9 +31,11 @@ A real-time Taipei uBike station monitoring application that provides live avail
 - **OpenAPI/Swagger** - API documentation with Scalar UI
 - **HttpClient** - External API integration
 
-### DevOps
-- **GitHub Actions** - Automated CI/CD pipeline
-- **Vite Build** - Optimized production builds
+### DevOps & Deployment
+- **Docker** - Containerized deployment with multi-stage builds
+- **GitHub Actions** - Automated CI/CD pipeline with Docker image publishing
+- **HTTPS Support** - SSL/TLS encryption for secure communication
+- **GitHub Container Registry** - Automated image storage and distribution
 
 ## 📋 Prerequisites
 
@@ -78,6 +80,9 @@ The frontend will be available at `http://localhost:5173`
 
 ```
 ubikeStatus/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml          # CI/CD pipeline (moved from frontend/)
 ├── backend/                    # .NET Web API
 │   ├── Controllers/           # API controllers
 │   │   └── uBikeController.cs # uBike endpoints
@@ -105,11 +110,13 @@ ubikeStatus/
 │   │   │   └── ubike.js
 │   │   ├── App.vue        # Root component
 │   │   └── main.js        # Application entry
-│   ├── .github/
-│   │   └── workflows/
-│   │       └── deploy.yml  # CI/CD pipeline
 │   ├── package.json       # Dependencies
 │   └── vite.config.js     # Vite configuration
+├── Dockerfile              # Multi-stage Docker build
+├── .dockerignore          # Docker build optimization
+├── docker-compose.yml     # Container orchestration
+├── test-docker.sh         # Docker testing script
+├── DOCKER_DEPLOYMENT.md   # Detailed deployment guide
 └── README.md             # This file
 ```
 
@@ -187,17 +194,65 @@ dotnet publish -c Release
 
 ## 🚀 Deployment
 
-This project includes a GitHub Actions workflow for automated deployment:
+### Docker Deployment (Recommended)
+
+This project supports full-stack Docker deployment with HTTPS support:
+
+#### Quick Docker Start
+```bash
+# Using Docker Compose (recommended)
+docker-compose up --build
+
+# Access the application:
+# - HTTPS: https://localhost:8443
+# - HTTP: http://localhost:8080
+```
+
+#### Manual Docker Build
+```bash
+# Build the image
+docker build -t ubike-app .
+
+# Run with HTTPS support
+docker run -p 8080:8080 -p 8443:8443 \
+  -e ASPNETCORE_URLS="https://+:8443;http://+:8080" \
+  -e ASPNETCORE_Kestrel__Certificates__Default__Password="REDACTED_PASSWORD" \
+  -e ASPNETCORE_Kestrel__Certificates__Default__Path="/https/aspnetapp.pfx" \
+  ubike-app
+```
+
+#### Docker Features
+- **Multi-stage Build**: Optimized image size with separate build and runtime stages
+- **HTTPS Support**: Built-in SSL certificate for secure communication
+- **Static File Serving**: Backend serves both API and frontend files
+- **Production Ready**: Configured for production deployment
+
+### GitHub Actions CI/CD
+
+Automated deployment pipeline:
 
 - **Trigger**: Push to `main` branch
 - **Process**: 
-  1. Checkout code
-  2. Setup Node.js environment
-  3. Install dependencies
-  4. Build project
-  5. Upload build artifacts
+  1. Build and test frontend (Vue.js + Vite)
+  2. Build and test backend (.NET 9)
+  3. Create multi-stage Docker image
+  4. Push to GitHub Container Registry (ghcr.io)
+  5. Support for AMD64 and ARM64 architectures
 
-The workflow file is located at `frontend/.github/workflows/deploy.yml`.
+**Container Images**: Available at `ghcr.io/[username]/[repository]`
+
+The workflow file is located at `.github/workflows/deploy.yml`.
+
+### Local Testing
+
+Use the provided test script:
+```bash
+# Make executable and run
+chmod +x test-docker.sh
+./test-docker.sh
+```
+
+For detailed deployment instructions, see [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md).
 
 ## 📊 Data Source
 
