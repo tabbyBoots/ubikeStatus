@@ -252,7 +252,8 @@ docker build -t ubike-app .
 # Run with HTTPS support
 docker run -p 8080:8080 -p 8443:8443 \
   -e ASPNETCORE_URLS="https://+:8443;http://+:8080" \
-  -e ASPNETCORE_Kestrel__Certificates__Default__Password="REDACTED_PASSWORD" \
+  -e SSL_CERT_PASSWORD="your_secure_password" \
+  -e ASPNETCORE_Kestrel__Certificates__Default__Password="${SSL_CERT_PASSWORD}" \
   -e ASPNETCORE_Kestrel__Certificates__Default__Path="/https/aspnetapp.pfx" \
   ubike-app
 ```
@@ -264,6 +265,18 @@ docker run -p 8080:8080 -p 8443:8443 \
 - **Production Ready**: Configured for production deployment
 - **Development Mode**: Optional development container with hot-reload support
 - **Health Checks**: Container health monitoring capabilities
+
+### Railway Deployment (Recommended for Production)
+
+For easy production deployment with proper security configuration:
+
+📖 **See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) for detailed Railway deployment instructions**
+
+Key features:
+- **Environment Variable Configuration**: Secure SSL certificate and CORS management
+- **Automatic HTTPS**: Railway handles SSL certificates automatically
+- **Easy Scaling**: Built-in scaling and monitoring
+- **Custom Domains**: Support for custom domain configuration
 
 ### GitHub Actions CI/CD
 
@@ -314,7 +327,8 @@ VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 ```bash
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=https://+:8443;http://+:8080
-ASPNETCORE_Kestrel__Certificates__Default__Password=REDACTED_PASSWORD
+SSL_CERT_PASSWORD=your_secure_password_here
+ASPNETCORE_Kestrel__Certificates__Default__Password=${SSL_CERT_PASSWORD}
 ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
 ```
 

@@ -84,7 +84,8 @@ Images are automatically pushed to:
 
 - `ASPNETCORE_ENVIRONMENT=Production`
 - `ASPNETCORE_URLS=https://+:8443;http://+:8080`
-- `ASPNETCORE_Kestrel__Certificates__Default__Password=REDACTED_PASSWORD`
+- `SSL_CERT_PASSWORD=your_secure_password_here` (Set via environment variable)
+- `ASPNETCORE_Kestrel__Certificates__Default__Password=${SSL_CERT_PASSWORD}`
 - `ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx`
 
 ### HTTPS Configuration
@@ -95,7 +96,7 @@ The Docker setup now includes proper HTTPS support:
 - **HTTP Port**: 8080 (for compatibility and health checks)
 - **HTTPS Port**: 8443 (primary secure endpoint)
 - **Certificate Location**: `/https/aspnetapp.pfx` inside container
-- **Certificate Password**: `REDACTED_PASSWORD` (change for production)
+- **Certificate Password**: Set via `SSL_CERT_PASSWORD` environment variable (secure)
 
 #### For Production Deployment:
 1. Replace development certificate with proper SSL certificate

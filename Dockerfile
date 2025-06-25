@@ -15,7 +15,9 @@ COPY backend/ ./
 RUN dotnet publish -c Release -o out
 
 # Generate development certificate in SDK stage
-RUN dotnet dev-certs https -ep /app/backend/aspnetapp.pfx -p REDACTED_PASSWORD --trust
+# Use build arg for certificate password (REQUIRED - no default for security)
+ARG SSL_CERT_PASSWORD
+RUN dotnet dev-certs https -ep /app/backend/aspnetapp.pfx -p ${SSL_CERT_PASSWORD} --trust
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:9.0

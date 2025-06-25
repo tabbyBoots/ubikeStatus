@@ -22,10 +22,12 @@ fi
 
 # Run the container with both HTTP and HTTPS ports
 echo "🏃 Starting container on ports 8080 (HTTP) and 8443 (HTTPS)..."
+SSL_CERT_PASSWORD=${SSL_CERT_PASSWORD:-"TestPassword123!"}
 CONTAINER_ID=$(docker run -d -p 8080:8080 -p 8443:8443 \
     -e ASPNETCORE_ENVIRONMENT=Production \
     -e "ASPNETCORE_URLS=https://+:8443;http://+:8080" \
-    -e ASPNETCORE_Kestrel__Certificates__Default__Password=REDACTED_PASSWORD \
+    -e SSL_CERT_PASSWORD="$SSL_CERT_PASSWORD" \
+    -e ASPNETCORE_Kestrel__Certificates__Default__Password="$SSL_CERT_PASSWORD" \
     -e ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx \
     --name ubike-test ubike-app-test)
 

@@ -6,6 +6,13 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure allowed hosts from environment variable
+var allowedHosts = Environment.GetEnvironmentVariable("ALLOWED_HOSTS");
+if (!string.IsNullOrEmpty(allowedHosts))
+{
+    builder.Configuration["AllowedHosts"] = allowedHosts;
+}
+
 // Configure Kestrel - use environment URLs or fallback to development defaults
 if (builder.Environment.IsDevelopment() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
 {
@@ -46,14 +53,47 @@ builder.Services.AddOpenApi(options =>
     });
 });
 
-// Add CORS
+// Add CORS with environment-specific configuration
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowVueApp",
-        builder => builder
-            .WithOrigins("http://localhost:5173") // Vite ports
-            .AllowAnyMethod()
-            .AllowAnyHeader());
+    options.AddPolicy("AllowVueApp", corsBuilder =>
+    {
+        if (builder.Environment.IsDevelopment())
+        {
+            // Development: Allow localhost ports for Vite and Google Maps API
+            corsBuilder
+                .WithOrigins(
+                    "http://localhost:5173",  // Vite dev server
+                    "https://localhost:5173", // Vite dev server HTTPS
+                    "http://localhost:3000",  // Alternative dev port
+                    "https://localhost:3000"  // Alternative dev port HTTPS
+                )
+                .WithMethods("GET", "POST", "OPTIONS") // Specific methods only
+                .WithHeaders(
+                    "Content-Type",
+                    "Accept",
+                    "Authorization",
+                    "X-Requested-With"
+                )
+                .AllowCredentials();
+        }
+        else
+        {
+            // Production: More restrictive CORS
+            var allowedOrigins = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS")?.Split(',') 
+                ?? new[] { "https://localhost:8443", "http://localhost:8080" };
+            
+            corsBuilder
+                .WithOrigins(allowedOrigins)
+                .WithMethods("GET", "OPTIONS") // API is read-only
+                .WithHeaders(
+                    "Content-Type",
+                    "Accept",
+                    "X-Requested-With"
+                )
+                .AllowCredentials();
+        }
+    });
 });
 
 
