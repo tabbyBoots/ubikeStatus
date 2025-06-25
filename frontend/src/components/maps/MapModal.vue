@@ -367,7 +367,7 @@ async function retryMapLoad() {
 }
 
 function clearAllMarkers() {
-  console.log('🧹 Clearing all markers...');
+  //console.log('🧹 Clearing all markers...');
   
   if (usingFallbackMap.value && map.value) {
     // Clear all Leaflet markers
@@ -400,7 +400,7 @@ function clearAllMarkers() {
   
   allMarkers.value = [];
   marker.value = null;
-  console.log('✅ All markers cleared');
+  //console.log('✅ All markers cleared');
 }
 
 //更新地圖以顯示新站點
@@ -408,7 +408,7 @@ async function updateMapForNewStation() {
   if (!map.value) return;
   
   //console.log('🔄 Updating map for new station:', props.station.sna);
-  console.log('📍 New station position:', stationPosition.value);
+  //console.log('📍 New station position:', stationPosition.value);
   
   try {
     // Clear all existing markers first
@@ -592,7 +592,7 @@ async function findNearbyStations() {
 }
 
 function closeAllInfoWindows() {
-  console.log('🔒 Closing all info windows...');
+  //console.log('🔒 Closing all info windows...');
   
   if (usingFallbackMap.value) {
     // Close all Leaflet popups
@@ -628,7 +628,7 @@ function closeAllInfoWindows() {
 }
 
   function closeAllInfoWindowsExcept(excludeStationSno) {
-    console.log('🔒 Closing all info windows except for station:', excludeStationSno);
+    //console.log('🔒 Closing all info windows except for station:', excludeStationSno);
 
     if (usingFallbackMap.value) {
       // For Leaflet, we need to close popups manually for each marker except the excluded one
@@ -666,7 +666,7 @@ function closeAllInfoWindows() {
 
     // Clear the tracking array but we'll rebuild it with the selected station's info window
     allInfoWindows.value = [];
-    console.log('✅ All info windows closed except selected station');
+    //console.log('✅ All info windows closed except selected station');
   }
 
 
@@ -730,7 +730,7 @@ function updateMarkerAppearance(targetStationSno, isSelected = false) {
 
 
   function setMarkerAsSelected(targetStationSno) {
-    console.log('🎯 Setting marker as selected for station:', targetStationSno);
+    //console.log('🎯 Setting marker as selected for station:', targetStationSno);
 
     // Close all info windows
     //closeAllInfoWindows();
@@ -856,7 +856,7 @@ function updateMarkerAppearance(targetStationSno, isSelected = false) {
         targetMarkerData.marker.setZIndexOffset(1000);
       }
 
-      console.log('✅ Marker set as selected');
+      //console.log('✅ Marker set as selected');
     } 
   }
 
@@ -864,7 +864,7 @@ function updateMarkerAppearance(targetStationSno, isSelected = false) {
 async function addNearbyStationMarkers(nearbyStations) {
   if (!map.value || nearbyStations.length === 0) return;
   
-  console.log('📍 Adding markers for nearby stations:', nearbyStations.length);
+  //console.log('📍 Adding markers for nearby stations:', nearbyStations.length);
   
   // Clear only nearby markers, preserve main station marker
 const mainStationSno = props.station.sno;
@@ -947,7 +947,7 @@ allMarkers.value = allMarkers.value.filter(markerData =>
             isSelected: false
           }
         );
-        console.log('QQQ:Position-----> ',position);
+        //console.log('QQQ:Position-----> ',position);
 
         // Create info window
         const infoWindow = await GoogleMapsService.createInfoWindow(
@@ -989,7 +989,7 @@ allMarkers.value = allMarkers.value.filter(markerData =>
   // Set the current station as selected
   setMarkerAsSelected(props.station.sno);
   
-  console.log('✅ Added markers for all nearby stations');
+  //console.log('✅ Added markers for all nearby stations');
 }
 
 async function handleNearbyStationClick(stationSno) {

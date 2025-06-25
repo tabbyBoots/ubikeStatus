@@ -5,16 +5,24 @@ A real-time Taipei uBike station monitoring application that provides live avail
 ## 🚴‍♂️ Features
 
 - **Real-time Data**: Live uBike station availability from Taipei City's official API
-- **Area Filtering**: Filter stations by specific areas/districts
-- **Station Details**: View detailed information including:
+- **Interactive Maps**: Integrated Google Maps with station locations and detailed information
+- **Favorites System**: Save and manage your favorite stations with persistent storage
+- **Advanced Filtering**: 
+  - Filter by area/district with default "所有區域" (All Areas) selection
+  - Filter by availability (bikes available, parking spaces available)
+  - Search by station name or address
+  - Reset filters with one-click reset button
+- **Station Details**: View comprehensive information including:
   - Available bikes for rent
   - Available parking spaces
   - Station location and address
   - Last update time
-  - Station status
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
+  - Station operational status
+  - Interactive map location
+- **Multiple View Modes**: Switch between table and card views
 - **Export Functionality**: Export station data for analysis
-- **Multiple View Modes**: List and detailed view options
+- **Responsive Design**: Works seamlessly on desktop and mobile devices
+- **Auto-refresh**: Automatic data updates every 60 seconds
 
 ## 🛠️ Technology Stack
 
@@ -24,6 +32,8 @@ A real-time Taipei uBike station monitoring application that provides live avail
 - **Pinia** - State management for Vue.js
 - **Vue Router** - Client-side routing
 - **Axios** - HTTP client for API requests
+- **Google Maps API** - Interactive map integration for station locations
+- **Leaflet** - Alternative map service support
 
 ### Backend
 - **.NET 9** - Modern web API framework
@@ -97,15 +107,22 @@ ubikeStatus/
 ├── frontend/                 # Vue.js application
 │   ├── src/
 │   │   ├── components/      # Vue components
-│   │   │   ├── UbikeStations.vue
-│   │   │   ├── stationsList.vue
-│   │   │   ├── stationsDetail.vue
-│   │   │   ├── ViewToggle.vue
-│   │   │   └── ExportButton.vue
+│   │   │   ├── UbikeStations.vue    # Main stations display component
+│   │   │   ├── stationsList.vue     # Stations list view
+│   │   │   ├── stationsDetail.vue   # Station detail view
+│   │   │   ├── ViewToggle.vue       # Table/Card view switcher
+│   │   │   ├── ExportButton.vue     # Data export functionality
+│   │   │   ├── FavoritesButton.vue  # Favorites management
+│   │   │   └── maps/               # Map-related components
+│   │   │       └── MapModal.vue    # Interactive map modal
+│   │   ├── services/       # Service layer
+│   │   │   ├── GoogleMapsService.js # Google Maps integration
+│   │   │   └── LeafletMapService.js # Leaflet maps integration
 │   │   ├── views/          # Page components
 │   │   │   └── uBikeView.vue
 │   │   ├── stores/         # Pinia stores
-│   │   │   └── ubike.js
+│   │   │   ├── ubike.js           # Main application state
+│   │   │   └── favorites.js       # Favorites management
 │   │   ├── api/           # API integration
 │   │   │   └── ubike.js
 │   │   ├── App.vue        # Root component

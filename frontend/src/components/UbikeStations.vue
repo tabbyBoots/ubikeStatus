@@ -23,6 +23,14 @@
           </select>
         </div>
         
+        <button 
+          class="btn btn-secondary reset-btn" 
+          @click="resetFilters"
+          title="重置所有查詢條件"
+        >
+          🔄 重置查詢
+        </button>
+        
         <ViewToggle />
       </div>
       
@@ -319,6 +327,10 @@ function handleStationSelected(sno) {
   if (station) {
     store.showStationMap(station);
   }
+}
+
+function resetFilters() {
+  store.resetFilters();
 }
 
 // Lifecycle

@@ -6,7 +6,7 @@ export const useUbikeStore = defineStore('ubike', {
         stations: [],
         isLoading: false,
         error: null,
-        selectedArea: null,
+        selectedArea: '',
         viewMode: localStorage.getItem('ubikeViewMode') || 'table',
         searchTerm: '',
         filterType: 'all',
@@ -111,20 +111,25 @@ export const useUbikeStore = defineStore('ubike', {
             this.sortOrder = sortOrder;
         },
         showStationMap(station) {
-            console.log('🏪 Store: showStationMap called with station:', station.sna);
+            //console.log('🏪 Store: showStationMap called with station:', station.sna);
             this.selectedStation = station;
             this.showMapModal = true;
-            console.log('🏪 Store: showMapModal set to:', this.showMapModal);
-            console.log('🏪 Store: selectedStation set to:', this.selectedStation?.sna);
+            //console.log('🏪 Store: showMapModal set to:', this.showMapModal);
+            //console.log('🏪 Store: selectedStation set to:', this.selectedStation?.sna);
         },
         hideStationMap() {
-            console.log('🏪 Store: hideStationMap called');
+            //console.log('🏪 Store: hideStationMap called');
             this.showMapModal = false;
             this.selectedStation = null;
-            console.log('🏪 Store: showMapModal set to:', this.showMapModal);
+            //console.log('🏪 Store: showMapModal set to:', this.showMapModal);
         },
         getStationById(sno) {
             return this.stations.find(station => station.sno === sno);
+        },
+        resetFilters() {
+            this.searchTerm = '';
+            this.selectedArea = '';
+            this.filterType = 'all';
         }
     }
 });

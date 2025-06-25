@@ -63,14 +63,14 @@ class GoogleMapsService {
     const map = new google.maps.Map(container, defaultOptions);
     
     // Debug map rendering mode
-    setTimeout(() => {
-      console.log('🔍 Map rendering type:', map.getRenderingType());
-      console.log('🔍 Map capabilities:', {
-        supportsAdvancedMarkers: map.getCapabilities?.()?.isAdvancedMarkersAvailable,
-        mapId: map.getMapId?.(),
-        renderingType: map.getRenderingType?.()
-      });
-    }, 2000);
+    //setTimeout(() => {
+      //console.log('🔍 Map rendering type:', map.getRenderingType());
+      //console.log('🔍 Map capabilities:', {
+      //  supportsAdvancedMarkers: map.getCapabilities?.()?.isAdvancedMarkersAvailable,
+      //  mapId: map.getMapId?.(),
+      //  renderingType: map.getRenderingType?.()
+      //});
+    //}, 2000);
     
     return map;
   }
@@ -87,9 +87,9 @@ class GoogleMapsService {
     const isSelected = options.isSelected || false;
     const markerContent = this.createMarkerContent(options.title, isSelected);
 
-    console.log('🔍 Creating AdvancedMarker:', { position, options });
-    console.log('🔍 Marker library imported:', { AdvancedMarkerElement, PinElement });
-    console.log('🔍 Marker content created:', markerContent);
+    //console.log('🔍 Creating AdvancedMarker:', { position, options });
+    //console.log('🔍 Marker library imported:', { AdvancedMarkerElement, PinElement });
+    //console.log('🔍 Marker content created:', markerContent);
 
     // Create the AdvancedMarkerElement
     const marker = new AdvancedMarkerElement({
@@ -100,7 +100,7 @@ class GoogleMapsService {
       zIndex: isSelected ? 1000 : 10
     });
 
-    console.log('✅ Marker created successfully:', marker);
+    //console.log('✅ Marker created successfully:', marker);
 
 
 
