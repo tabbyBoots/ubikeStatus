@@ -51,7 +51,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowVueApp",
         builder => builder
-            .WithOrigins("http://localhost:5173") // Vite default port
+            .WithOrigins("http://localhost:5173") // Vite ports
             .AllowAnyMethod()
             .AllowAnyHeader());
 });

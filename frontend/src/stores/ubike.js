@@ -11,7 +11,9 @@ export const useUbikeStore = defineStore('ubike', {
         searchTerm: '',
         filterType: 'all',
         sortBy: 'sna',
-        sortOrder: 'asc'
+        sortOrder: 'asc',
+        selectedStation: null,
+        showMapModal: false
     }),
     getters: {
         areas: (state) => [...new Set(state.stations.map(s => s.sarea))].sort(),
@@ -40,6 +42,9 @@ export const useUbikeStore = defineStore('ubike', {
                     break;
                 case 'parking':
                     filtered = filtered.filter(station => station.available_return_bikes > 0 && station.act === 1);
+                    break;
+                case 'favorites':
+                    // This will be handled by the component using favorites store
                     break;
                 default:
                     break;
@@ -104,6 +109,22 @@ export const useUbikeStore = defineStore('ubike', {
         setSorting(sortBy, sortOrder) {
             this.sortBy = sortBy;
             this.sortOrder = sortOrder;
+        },
+        showStationMap(station) {
+            console.log('🏪 Store: showStationMap called with station:', station.sna);
+            this.selectedStation = station;
+            this.showMapModal = true;
+            console.log('🏪 Store: showMapModal set to:', this.showMapModal);
+            console.log('🏪 Store: selectedStation set to:', this.selectedStation?.sna);
+        },
+        hideStationMap() {
+            console.log('🏪 Store: hideStationMap called');
+            this.showMapModal = false;
+            this.selectedStation = null;
+            console.log('🏪 Store: showMapModal set to:', this.showMapModal);
+        },
+        getStationById(sno) {
+            return this.stations.find(station => station.sno === sno);
         }
     }
 });

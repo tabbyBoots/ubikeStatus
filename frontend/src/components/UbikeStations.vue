@@ -49,6 +49,13 @@
           >
             有位可停
           </button>
+          <button 
+            class="btn btn-secondary" 
+            :class="{ active: filterType === 'favorites' }"
+            @click="setFilter('favorites')"
+          >
+            ❤️ 我的最愛 ({{ favoritesStore.favoriteCount }})
+          </button>
         </div>
         
         <ExportButton />
@@ -117,6 +124,7 @@
                 {{ sortOrder === 'asc' ? '↑' : '↓' }}
               </span>
             </th>
+            <th>我的最愛</th>
           </tr>
         </thead>
         <tbody>
@@ -145,6 +153,9 @@
                 {{ station.available_return_bikes }}
               </span>
             </td>
+            <td class="favorites-cell">
+              <FavoritesButton :station-id="station.sno" />
+            </td>
           </tr>
         </tbody>
       </table>
@@ -163,8 +174,11 @@
             <div class="station-name">{{ station.sna }}</div>
             <div class="station-id">站點編號：{{ station.sno }}</div>
           </div>
-          <div class="station-status" :class="station.act === 1 ? 'status-active' : 'status-inactive'">
-            {{ station.act === 1 ? '運作中' : '暫停服務' }}
+          <div class="station-actions">
+            <FavoritesButton :station-id="station.sno" />
+            <div class="station-status" :class="station.act === 1 ? 'status-active' : 'status-inactive'">
+              {{ station.act === 1 ? '運作中' : '暫停服務' }}
+            </div>
           </div>
         </div>
 
@@ -191,16 +205,30 @@
         </div>
       </div>
     </div>
+
+    <!-- Map Modal -->
+    <MapModal 
+      v-if="store.selectedStation"
+      :station="store.selectedStation"
+      :is-visible="store.showMapModal"
+      :all-stations="stations"
+      @close="store.hideStationMap()"
+      @station-selected="handleStationSelected"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useUbikeStore } from '@/stores/ubike';
+import { useFavoritesStore } from '@/stores/favorites';
 import ViewToggle from './ViewToggle.vue';
 import ExportButton from './ExportButton.vue';
+import FavoritesButton from './FavoritesButton.vue';
+import MapModal from './maps/MapModal.vue';
 
 const store = useUbikeStore();
+const favoritesStore = useFavoritesStore();
 
 const refreshInterval = ref(null);
 
@@ -208,10 +236,21 @@ const refreshInterval = ref(null);
 const loading = computed(() => store.isLoading);
 const error = computed(() => store.error);
 const stations = computed(() => store.stations);
-const filteredStations = computed(() => store.filteredStations);
 const areas = computed(() => store.areas);
 const stats = computed(() => store.stats);
 const viewMode = computed(() => store.viewMode);
+
+// Custom filtered stations that handles favorites
+const filteredStations = computed(() => {
+  let filtered = store.filteredStations;
+  
+  // Apply favorites filter if selected
+  if (store.filterType === 'favorites') {
+    filtered = favoritesStore.getFavoriteStations(filtered);
+  }
+  
+  return filtered;
+});
 const searchTerm = computed({
   get: () => store.searchTerm,
   set: (value) => store.setSearchTerm(value)
@@ -269,19 +308,26 @@ function formatTime(timeString) {
 }
 
 function goToStation(sno) {
-  // For now, just log the station number since routing isn't set up
-  console.log('Navigate to station:', sno);
-  // You can implement navigation logic here when router is set up
-  // router.push(`/station/${sno}`);
+  const station = store.getStationById(sno);
+  if (station) {
+    store.showStationMap(station);
+  }
+}
+
+function handleStationSelected(sno) {
+  const station = store.getStationById(sno);
+  if (station) {
+    store.showStationMap(station);
+  }
 }
 
 // Lifecycle
 onMounted(() => {
   fetchStations();
-  // Auto refresh every 30 seconds
+  // Auto refresh every 60 seconds
   refreshInterval.value = setInterval(() => {
     fetchStations();
-  }, 30000);
+  }, 60000);
 });
 
 onUnmounted(() => {
@@ -537,6 +583,17 @@ onUnmounted(() => {
 .availability-none {
   background: #f8d7da;
   color: #721c24;
+}
+
+.favorites-cell {
+  text-align: center;
+  width: 60px;
+}
+
+.station-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* Card Styles */
