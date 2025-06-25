@@ -7,11 +7,12 @@ A real-time Taipei uBike station monitoring application that provides live avail
 - **Real-time Data**: Live uBike station availability from Taipei City's official API
 - **Interactive Maps**: Integrated Google Maps with station locations and detailed information
 - **Favorites System**: Save and manage your favorite stations with persistent storage
-- **Advanced Filtering**: 
+- **Advanced Filtering & Search**: 
   - Filter by area/district with default "所有區域" (All Areas) selection
-  - Filter by availability (bikes available, parking spaces available)
-  - Search by station name or address
-  - Reset filters with one-click reset button
+  - Filter by availability (bikes available, parking spaces available, favorites)
+  - Real-time search by station name, address, or English name
+  - Sorting by station name, area, or availability counts
+  - One-click reset filters functionality
 - **Station Details**: View comprehensive information including:
   - Available bikes for rent
   - Available parking spaces
@@ -19,42 +20,48 @@ A real-time Taipei uBike station monitoring application that provides live avail
   - Last update time
   - Station operational status
   - Interactive map location
-- **Multiple View Modes**: Switch between table and card views
-- **Export Functionality**: Export station data for analysis
+- **Multiple View Modes**: Switch between table and card views with persistent preference storage
+- **Export Functionality**: Export filtered station data for analysis
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
 - **Auto-refresh**: Automatic data updates every 60 seconds
+- **Statistics Dashboard**: Real-time stats showing total stations, active stations, available bikes, and parking slots
+- **Geolocation Support**: Find nearby stations based on current location
+- **Dual Map Support**: Google Maps as primary with Leaflet/OpenStreetMap as fallback
 
 ## 🛠️ Technology Stack
 
 ### Frontend
-- **Vue.js 3** - Progressive JavaScript framework with Composition API
-- **Vite** - Fast build tool and development server
-- **Pinia** - State management for Vue.js
-- **Vue Router** - Client-side routing
-- **Axios** - HTTP client for API requests
-- **Google Maps API** - Interactive map integration for station locations
-- **Leaflet** - Alternative map service support
+- **Vue.js 3** (v3.5.13) - Progressive JavaScript framework with Composition API
+- **Vite** (v6.3.5) - Fast build tool and development server
+- **Pinia** (v3.0.3) - State management for Vue.js
+- **Vue Router** (v4.5.1) - Client-side routing
+- **Axios** (v1.10.0) - HTTP client for API requests
+- **Google Maps JavaScript API** (v1.16.8) - Interactive map integration for station locations
+- **Leaflet** - Alternative fallback map service with OpenStreetMap tiles
 
 ### Backend
 - **.NET 9** - Modern web API framework
 - **ASP.NET Core Web API** - RESTful API development
-- **OpenAPI/Swagger** - API documentation with Scalar UI
-- **HttpClient** - External API integration
+- **OpenAPI/Swagger** - API documentation with Scalar UI (v2.5.0)
+- **HttpClient** - External API integration for real-time data fetching
 
 ### DevOps & Deployment
 - **Docker** - Containerized deployment with multi-stage builds
 - **GitHub Actions** - Automated CI/CD pipeline with Docker image publishing
-- **HTTPS Support** - SSL/TLS encryption for secure communication
+- **HTTPS Support** - Built-in SSL/TLS encryption for secure communication
 - **GitHub Container Registry** - Automated image storage and distribution
+- **Multi-Architecture Support** - AMD64 and ARM64 container images
+- **Production Optimization** - Separate development and production Docker configurations
 
 ## 📋 Prerequisites
 
 Before running this application, make sure you have the following installed:
 
-- **Node.js** (v16 or higher)
-- **.NET 9 SDK**
-- **Git**
-- **GitHub CLI** (optional, for repository management)
+- **Node.js** (v18 or higher) - Required for frontend development
+- **.NET 9 SDK** - Required for backend development
+- **Git** - Version control
+- **Docker** (optional) - For containerized deployment
+- **Google Maps API Key** (optional) - For enhanced map features
 
 ## 🚀 Quick Start
 
@@ -156,7 +163,7 @@ Returns all uBike stations with current availability data.
     "total": 180,
     "available_rent_bikes": 23,
     "sarea": "信義區",
-    "mday": "2025-06-23 15:30:15",
+    "mday": "2025-06-25 15:30:15",
     "lat": 25.0408578889,
     "lng": 121.567904444,
     "ar": "11049臺北市信義區忠孝東路五段6號前方",
@@ -165,6 +172,18 @@ Returns all uBike stations with current availability data.
   }
 ]
 ```
+
+**Field Descriptions:**
+- `sno`: Station unique identifier
+- `sna`: Station name (Chinese)
+- `total`: Total bike slots at station
+- `available_rent_bikes`: Available bikes for rent
+- `available_return_bikes`: Available parking spaces
+- `sarea`: District/Area name
+- `mday`: Last update timestamp
+- `lat`/`lng`: GPS coordinates
+- `ar`: Full address
+- `act`: Station status (1=active, 0=inactive)
 
 #### Get Stations by Area
 ```http
@@ -243,22 +262,25 @@ docker run -p 8080:8080 -p 8443:8443 \
 - **HTTPS Support**: Built-in SSL certificate for secure communication
 - **Static File Serving**: Backend serves both API and frontend files
 - **Production Ready**: Configured for production deployment
+- **Development Mode**: Optional development container with hot-reload support
+- **Health Checks**: Container health monitoring capabilities
 
 ### GitHub Actions CI/CD
 
-Automated deployment pipeline:
+Automated deployment pipeline with comprehensive testing:
 
-- **Trigger**: Push to `main` branch
-- **Process**: 
-  1. Build and test frontend (Vue.js + Vite)
-  2. Build and test backend (.NET 9)
-  3. Create multi-stage Docker image
-  4. Push to GitHub Container Registry (ghcr.io)
-  5. Support for AMD64 and ARM64 architectures
+- **Triggers**: Push to `main` branch and pull requests
+- **Build Process**: 
+  1. **Frontend Pipeline**: Install dependencies → Build with Vite → Upload artifacts
+  2. **Backend Pipeline**: Restore packages → Build with .NET 9 → Run tests → Upload artifacts
+  3. **Docker Pipeline**: Multi-architecture build → Push to GitHub Container Registry
+- **Multi-Architecture Support**: AMD64 and ARM64 container images
+- **Caching**: Optimized build times with GitHub Actions cache
+- **Artifact Management**: Build artifacts stored for deployment
 
 **Container Images**: Available at `ghcr.io/[username]/[repository]`
 
-The workflow file is located at `.github/workflows/deploy.yml`.
+The workflow configuration is located at `.github/workflows/deploy.yml`.
 
 ### Local Testing
 
@@ -278,6 +300,33 @@ This application uses the official Taipei City uBike API:
 - **Data Provider**: Taipei City Government
 - **Update Frequency**: Real-time updates
 - **Official Dataset**: [Taipei Open Data Portal](https://data.taipei/dataset/detail?id=c6bc8aed-557d-41d5-bfb1-8da24f78f2fb)
+
+## 🔧 Configuration
+
+### Environment Variables
+
+**Frontend** (optional):
+```bash
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
+```
+
+**Backend** (Docker deployment):
+```bash
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_URLS=https://+:8443;http://+:8080
+ASPNETCORE_Kestrel__Certificates__Default__Password=REDACTED_PASSWORD
+ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+```
+
+### Google Maps API Setup (Optional)
+
+1. Visit [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing one
+3. Enable the Maps JavaScript API
+4. Create an API key with appropriate restrictions
+5. Add the key to your environment variables
+
+**Note**: The application includes Leaflet/OpenStreetMap as a fallback if Google Maps API is not configured.
 
 ## 📸 Screenshots
 

@@ -1,9 +1,20 @@
 import axios from 'axios';
 
-// Use relative path for API requests
+// Environment-based API configuration
+// Development: Use Vite proxy (/api)
+// Production: Use direct backend API (/api/ubike)
+const isDevelopment = import.meta.env.DEV || 
+                     (window.location.hostname === 'localhost' && 
+                      window.location.port !== '8080' && 
+                      window.location.port !== '8443');
+
+const baseURL = isDevelopment ? '/api' : '/api/ubike';
+
+console.log(`🔧 API Environment: ${isDevelopment ? 'Development' : 'Production'}`);
+console.log(`🔗 API Base URL: ${baseURL}`);
+
 const apiClient = axios.create({
-  // src/api/ubike.js
-  baseURL: 'http://localhost:5001/api/ubike', // Updated to match backend HTTP port
+  baseURL,
   withCredentials: false,
   headers: {
     Accept: 'application/json',

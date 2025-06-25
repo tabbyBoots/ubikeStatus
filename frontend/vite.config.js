@@ -24,8 +24,8 @@ export default defineConfig({
         secure: false,
         agent: new https.Agent({  
           rejectUnauthorized: false // Ignore self-signed cert errors
-        }),
-        rewrite: (path) => path.replace(/^\/api/, '')
+        })
+        // Removed rewrite to preserve /api path for backend
       }
     }
   }

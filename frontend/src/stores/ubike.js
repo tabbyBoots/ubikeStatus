@@ -86,9 +86,13 @@ export const useUbikeStore = defineStore('ubike', {
             this.error = null;
             try {
                 const response = await uBikeApi.getStations();
-                this.stations = response.data;
+                // Ensure we always have an array, even if API returns unexpected data
+                this.stations = Array.isArray(response.data) ? response.data : [];
+                console.log(`📊 Loaded ${this.stations.length} stations`);
             } catch (error) {
+                console.error('❌ Failed to fetch stations:', error);
                 this.error = error;
+                this.stations = []; // Ensure stations is always an array
             } finally {
                 this.isLoading = false;
             }
