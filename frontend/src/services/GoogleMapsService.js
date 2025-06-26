@@ -51,98 +51,330 @@ class GoogleMapsService {
     const google = await this.initialize();
     const defaultOptions = {
       zoom: 15,
-      mapId: '98295c154ca32e2abb77ac57', //可以在Google Cloud自定義地圖 
       mapTypeId: google.maps.MapTypeId.ROADMAP,
       streetViewControl: true,
       mapTypeControl: true,
       fullscreenControl: true,
       zoomControl: true,
+      gestureHandling: 'greedy',
       ...options
     };
     
+    // Only add mapId if we want to use Advanced Markers
+    // For now, let's use standard markers to avoid the Map ID requirement
     const map = new google.maps.Map(container, defaultOptions);
     
-    // Debug map rendering mode
-    //setTimeout(() => {
-      //console.log('🔍 Map rendering type:', map.getRenderingType());
-      //console.log('🔍 Map capabilities:', {
-      //  supportsAdvancedMarkers: map.getCapabilities?.()?.isAdvancedMarkersAvailable,
-      //  mapId: map.getMapId?.(),
-      //  renderingType: map.getRenderingType?.()
-      //});
-    //}, 2000);
+    console.log('✅ Google Maps created successfully');
     
     return map;
   }
 
   
 
-  async createAdvancedMarker(map, position, options = {}) {
+  async createStandardMarker(map, position, options = {}) {
     const google = await this.initialize();
+    
+    console.log('🔍 Creating enhanced standard marker with position:', position);
+    
+    // Ensure position is in the correct format
+    let markerPosition;
+    if (position instanceof google.maps.LatLng) {
+      markerPosition = position;
+    } else if (typeof position === 'object' && 'lat' in position && 'lng' in position) {
+      markerPosition = new google.maps.LatLng(position.lat, position.lng);
+    } else {
+      console.error('❌ Invalid position format:', position);
+      throw new Error('Invalid position format for marker');
+    }
 
-    // Import the new marker library
-    const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary("marker");
-
-    // Create custom HTML content for the marker
     const isSelected = options.isSelected || false;
-    const markerContent = this.createMarkerContent(options.title, isSelected);
-
-    //console.log('🔍 Creating AdvancedMarker:', { position, options });
-    //console.log('🔍 Marker library imported:', { AdvancedMarkerElement, PinElement });
-    //console.log('🔍 Marker content created:', markerContent);
-
-    // Create the AdvancedMarkerElement
-    const marker = new AdvancedMarkerElement({
-      map,
-      position: center, // 加上這個才能顯示在地圖上
-      content: markerContent,
+    const availableBikes = options.availableBikes || 0;
+    const distance = options.distance;
+    
+    // Create custom icon using SVG
+    const size = isSelected ? 48 : 36;
+    let backgroundColor, borderColor;
+    
+    if (isSelected) {
+      backgroundColor = '#ff4444';
+      borderColor = '#ffffff';
+    } else {
+      backgroundColor = '#007bff';
+      if (availableBikes === 0) {
+        borderColor = '#dc3545'; // Red border for no bikes
+      } else if (availableBikes <= 4) {
+        borderColor = '#ffc107'; // Orange border for low bikes
+      } else {
+        borderColor = '#28a745'; // Green border for good availability
+      }
+    }
+    
+    // Create SVG icon with bike symbol
+    const svgIcon = `
+      <svg width="${size}" height="${size + (isSelected ? 20 : 0)}" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.3)"/>
+          </filter>
+        </defs>
+        
+        <!-- Main circle -->
+        <circle cx="${size/2}" cy="${size/2}" r="${(size-6)/2}" 
+                fill="${backgroundColor}" 
+                stroke="${borderColor}" 
+                stroke-width="${isSelected ? 3 : 2}" 
+                filter="url(#shadow)"/>
+        
+        <!-- Bike icon -->
+        <text x="${size/2}" y="${size/2 + 6}" 
+              text-anchor="middle" 
+              font-size="${isSelected ? 20 : 16}" 
+              fill="white" 
+              font-weight="bold">🚴</text>
+        
+        ${!isSelected && distance !== undefined ? `
+          <!-- Distance badge -->
+          <circle cx="${size - 10}" cy="${size - 10}" r="8" fill="white" stroke="#dee2e6"/>
+          <text x="${size - 10}" y="${size - 6}" 
+                text-anchor="middle" 
+                font-size="8" 
+                fill="#2c3e50" 
+                font-weight="bold">${distance < 1000 ? Math.round(distance) + 'm' : (distance/1000).toFixed(1) + 'k'}</text>
+        ` : ''}
+        
+        ${isSelected ? `
+          <!-- Station name label -->
+          <rect x="2" y="${size + 2}" width="${size - 4}" height="16" 
+                rx="4" fill="rgba(0,0,0,0.8)"/>
+          <text x="${size/2}" y="${size + 12}" 
+                text-anchor="middle" 
+                font-size="10" 
+                fill="white" 
+                font-weight="500">${options.title ? options.title.substring(0, 8) + (options.title.length > 8 ? '...' : '') : ''}</text>
+        ` : ''}
+      </svg>
+    `;
+    
+    const marker = new google.maps.Marker({
+      position: markerPosition,
+      map: map,
       title: options.title,
-      zIndex: isSelected ? 1000 : 10
+      zIndex: isSelected ? 1000 : 100,
+      icon: {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgIcon),
+        scaledSize: new google.maps.Size(size, size + (isSelected ? 20 : 0)),
+        anchor: new google.maps.Point(size/2, size/2)
+      }
     });
 
-    //console.log('✅ Marker created successfully:', marker);
-
-
-
+    console.log('✅ Enhanced standard marker created successfully at:', markerPosition.toString());
     return marker;
   }
 
-  createMarkerContent(title, isSelected = false) {
-    const size = isSelected ? 40 : 32;
-    const backgroundColor = isSelected ? '#ff4444' : '#007bff';
-    const fontSize = isSelected ? '20px' : '16px';
+  async createAdvancedMarker(map, position, options = {}) {
+    const google = await this.initialize();
 
-    // Create the main marker circle
-    const markerDiv = document.createElement('div');
-    markerDiv.style.cssText = `
-      width: ${size}px;
-      height: ${size}px;
-      background-color: ${backgroundColor};
-      border: 2px solid #ffffff;
-      border-radius: 50%;
+    // In Docker environments, Advanced Markers can cause IntersectionObserver issues
+    // Always fallback to standard markers for better compatibility
+    console.log('🔄 Using standard marker for Docker compatibility');
+    return await this.createStandardMarker(map, position, options);
+  }
+
+  createMarkerContent(title, isSelected = false, options = {}) {
+    const size = isSelected ? 48 : 36;
+    const distance = options.distance;
+    const availableBikes = options.availableBikes || 0;
+    
+    // Create container for marker and badges
+    const container = document.createElement('div');
+    container.style.cssText = `
+      position: relative;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      font-size: ${fontSize};
-      font-weight: bold;
-      color: white;
       cursor: pointer;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      transition: all 0.2s ease;
     `;
+
+    // Create the main marker circle with enhanced styling
+    const markerDiv = document.createElement('div');
+    
+    if (isSelected) {
+      // Focused station styling
+      markerDiv.style.cssText = `
+        width: ${size}px;
+        height: ${size}px;
+        background: linear-gradient(135deg, #ff4444, #ff6b35);
+        border: 3px solid #ffffff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        font-weight: bold;
+        color: white;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4);
+        transition: all 0.3s ease;
+        animation: focusedPulse 2s infinite;
+        z-index: 1000;
+      `;
+    } else {
+      // Nearby station styling with availability color coding
+      let borderColor = '#ffffff';
+      if (availableBikes === 0) {
+        borderColor = '#dc3545'; // Red for no bikes
+      } else if (availableBikes <= 4) {
+        borderColor = '#ffc107'; // Orange for low bikes
+      } else {
+        borderColor = '#28a745'; // Green for good availability
+      }
+      
+      markerDiv.style.cssText = `
+        width: ${size}px;
+        height: ${size}px;
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        border: 2px solid ${borderColor};
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        font-weight: bold;
+        color: white;
+        cursor: pointer;
+        box-shadow: 0 3px 8px rgba(0, 123, 255, 0.3);
+        transition: all 0.3s ease;
+        z-index: 100;
+      `;
+      
+      // Add hover effect
+      markerDiv.addEventListener('mouseenter', () => {
+        markerDiv.style.transform = 'scale(1.1)';
+        markerDiv.style.boxShadow = '0 4px 12px rgba(0, 123, 255, 0.5)';
+      });
+      
+      markerDiv.addEventListener('mouseleave', () => {
+        markerDiv.style.transform = 'scale(1)';
+        markerDiv.style.boxShadow = '0 3px 8px rgba(0, 123, 255, 0.3)';
+      });
+    }
+    
     markerDiv.textContent = '🚴';
     markerDiv.title = title;
+    container.appendChild(markerDiv);
 
-    return markerDiv;
+    // Add distance badge for nearby stations
+    if (!isSelected && distance !== undefined) {
+      const distanceBadge = document.createElement('div');
+      const distanceText = distance < 1000 ? `${Math.round(distance)}m` : `${(distance/1000).toFixed(1)}km`;
+      
+      distanceBadge.style.cssText = `
+        position: absolute;
+        bottom: -8px;
+        right: -8px;
+        background: #ffffff;
+        color: #2c3e50;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        padding: 2px 6px;
+        font-size: 10px;
+        font-weight: bold;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        z-index: 101;
+      `;
+      distanceBadge.textContent = distanceText;
+      container.appendChild(distanceBadge);
+    }
+
+    // Add station name label for focused station
+    if (isSelected) {
+      const nameLabel = document.createElement('div');
+      nameLabel.style.cssText = `
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        margin-top: 8px;
+        max-width: 150px;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      `;
+      nameLabel.textContent = title;
+      container.appendChild(nameLabel);
+    }
+
+    // Add CSS animations
+    if (!document.getElementById('marker-animations')) {
+      const style = document.createElement('style');
+      style.id = 'marker-animations';
+      style.textContent = `
+        @keyframes focusedPulse {
+          0% { box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4); }
+          50% { box-shadow: 0 4px 20px rgba(255, 68, 68, 0.6); }
+          100% { box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    return container;
   }
   
 
   async createInfoWindow(content, options = {}) {
     const google = await this.initialize();
-    return new google.maps.InfoWindow({
-      content,
-      ...options
-    });
+    
+    try {
+      console.log('🔍 Creating info window with content length:', content.length);
+      
+      const infoWindow = new google.maps.InfoWindow({
+        content,
+        ...options,
+        disableAutoPan: options.disableAutoPan !== undefined ? options.disableAutoPan : false
+      });
+      
+      console.log('✅ Info window created successfully');
+      return infoWindow;
+    } catch (error) {
+      console.error('❌ Error creating info window:', error);
+      throw error;
+    }
+  }
+  
+  // Helper method to open an info window with retry logic
+  async openInfoWindow(infoWindow, marker, map) {
+    if (!infoWindow || !map) {
+      console.error('❌ Cannot open info window: missing infoWindow or map');
+      return false;
+    }
+    
+    try {
+      console.log('🔍 Opening info window...');
+      
+      // First attempt
+      infoWindow.open({
+        map: map,
+        anchor: marker,
+        shouldFocus: false
+      });
+      
+      // Wait a moment and check if it's visible
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Second attempt with different approach if needed
+      infoWindow.open(map, marker);
+      
+      console.log('✅ Info window opened successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ Error opening info window:', error);
+      return false;
+    }
   }
 
   async getDirections(origin, destination, travelMode = 'WALKING') {
@@ -251,6 +483,320 @@ class GoogleMapsService {
         }
       );
     });
+  }
+
+  async createStreetViewPanorama(container, position, options = {}) {
+    const google = await this.initialize();
+    
+    // Add loading indicator
+    const loadingDiv = document.createElement('div');
+    loadingDiv.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    `;
+    loadingDiv.innerHTML = `
+      <div style="text-align: center;">
+        <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; margin: 0 auto; animation: spin 1s linear infinite;"></div>
+        <p style="margin-top: 10px; font-family: Arial, sans-serif;">Loading Street View...</p>
+      </div>
+      <style>
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    `;
+    
+    // Clear any existing panorama in the container
+    if (container) {
+      container.innerHTML = '';
+      container.appendChild(loadingDiv);
+    }
+    
+    // Force container to be visible with explicit dimensions
+    container.style.display = 'block';
+    container.style.visibility = 'visible';
+    container.style.width = '100%';
+    container.style.height = '100%';
+    container.style.minHeight = '400px';
+    
+    // Force a reflow
+    void container.offsetHeight;
+    
+    const defaultOptions = {
+      position,
+      pov: { heading: 0, pitch: 0 },
+      zoom: 1,
+      addressControl: false,
+      fullscreenControl: true,
+      // Force desktop-like experience on all devices
+      motionTracking: false,
+      motionTrackingControl: false,
+      showRoadLabels: true,
+      linksControl: true,
+      panControl: true,
+      zoomControl: true,
+      visible: true,
+      enableCloseButton: true,
+      ...options
+    };
+    
+    // Create the panorama
+    const panorama = new google.maps.StreetViewPanorama(container, defaultOptions);
+    
+    // Add event listeners for loading and errors
+    google.maps.event.addListenerOnce(panorama, 'status_changed', () => {
+      const status = panorama.getStatus();
+      console.log('🔍 Street View status:', status);
+      
+      if (status !== google.maps.StreetViewStatus.OK) {
+        console.error('❌ Street View not available at this location');
+      }
+      
+      // Remove loading indicator after a delay
+      setTimeout(() => {
+        try {
+          container.removeChild(loadingDiv);
+        } catch (e) {
+          console.warn('Could not remove loading indicator:', e);
+        }
+      }, 500);
+    });
+    
+    // Add event listener for when the user exits Street View
+    google.maps.event.addListener(panorama, 'visible_changed', () => {
+      console.log('🔍 Street View visibility changed:', panorama.getVisible());
+    });
+    
+    // Add event listener for pano_changed to ensure it's loaded
+    google.maps.event.addListenerOnce(panorama, 'pano_changed', () => {
+      console.log('✅ Street View panorama loaded successfully');
+    });
+    
+    return panorama;
+  }
+  
+  // Method to completely recreate a map instance with enhanced loading
+  async recreateMap(container, options = {}, markers = []) {
+    console.log('🔄 Recreating map instance...');
+    
+    if (!container) {
+      throw new Error('Container element is required to recreate map');
+    }
+    
+    // Clear the container
+    container.innerHTML = '';
+    
+    // Force a reflow
+    void container.offsetHeight;
+    
+    // Add a loading indicator to the container
+    const loadingDiv = document.createElement('div');
+    loadingDiv.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    `;
+    loadingDiv.innerHTML = `
+      <div style="text-align: center;">
+        <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; margin: 0 auto; animation: spin 1s linear infinite;"></div>
+        <p style="margin-top: 10px; font-family: Arial, sans-serif;">Loading map...</p>
+      </div>
+      <style>
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    `;
+    container.appendChild(loadingDiv);
+    
+    // Force another reflow
+    void container.offsetHeight;
+    
+    // Create a new map instance with WebGL forcing options
+    const mapOptions = {
+      ...options,
+      // Force WebGL rendering
+      mapTypeControl: true,
+      mapTypeControlOptions: {
+        mapTypeIds: ['roadmap', 'satellite', 'hybrid', 'terrain'],
+        style: 2 // DROPDOWN_MENU
+      },
+      // Force hardware acceleration
+      gestureHandling: 'greedy',
+      // Ensure tiles load
+      tilt: 0,
+      heading: 0
+    };
+    
+    // Create the map
+    const map = await this.createMap(container, mapOptions);
+    
+    // Force map to render completely by triggering multiple events
+    const google = await this.initialize();
+    
+    // Trigger initial resize
+    google.maps.event.trigger(map, 'resize');
+    
+    // Force map to load tiles by slightly changing zoom levels
+    const currentZoom = map.getZoom();
+    map.setZoom(currentZoom - 1);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    map.setZoom(currentZoom);
+    
+    // Force tiles to load by panning slightly
+    const center = map.getCenter();
+    const lat = center.lat();
+    const lng = center.lng();
+    map.panTo({lat: lat + 0.0001, lng: lng + 0.0001});
+    await new Promise(resolve => setTimeout(resolve, 100));
+    map.panTo({lat, lng});
+    
+    // Add markers back to the map
+    for (const markerInfo of markers) {
+      if (markerInfo && markerInfo.position) {
+        const marker = await this.createAdvancedMarker(
+          map,
+          markerInfo.position,
+          {
+            title: markerInfo.title || '',
+            isSelected: markerInfo.isSelected || false
+          }
+        );
+        
+        if (markerInfo.onClick && typeof markerInfo.onClick === 'function') {
+          marker.addEventListener('click', markerInfo.onClick);
+        }
+      }
+    }
+    
+    // Wait for map to be fully rendered before removing loading indicator
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Remove loading indicator
+    try {
+      container.removeChild(loadingDiv);
+    } catch (e) {
+      console.warn('Could not remove loading indicator:', e);
+    }
+    
+    // Final resize trigger
+    google.maps.event.trigger(map, 'resize');
+    
+    console.log('✅ Map recreated successfully');
+    return map;
+  }
+  
+  // Method to force a map refresh with enhanced tile loading
+  async forceMapRefresh(map, container) {
+    if (!map || !container) {
+      throw new Error('Map and container are required for refresh');
+    }
+    
+    console.log('🔄 Forcing map refresh...');
+    
+    try {
+      // Store current state
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      const mapTypeId = map.getMapTypeId();
+      
+      // Add a temporary loading indicator
+      const loadingDiv = document.createElement('div');
+      loadingDiv.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        pointer-events: none;
+      `;
+      loadingDiv.innerHTML = `
+        <div style="text-align: center;">
+          <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; margin: 0 auto; animation: spin 1s linear infinite;"></div>
+          <p style="margin-top: 10px; font-family: Arial, sans-serif;">Refreshing map...</p>
+        </div>
+        <style>
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        </style>
+      `;
+      container.appendChild(loadingDiv);
+      
+      // Force container refresh with multiple techniques
+      
+      // 1. Hide and show container
+      const originalDisplay = container.style.display;
+      container.style.display = 'none';
+      void container.offsetHeight;
+      container.style.display = originalDisplay || 'block';
+      void container.offsetHeight;
+      
+      // 2. Force WebGL context refresh by changing map type
+      const alternateMapType = mapTypeId === 'roadmap' ? 'satellite' : 'roadmap';
+      map.setMapTypeId(alternateMapType);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      map.setMapTypeId(mapTypeId);
+      
+      // 3. Trigger multiple resize events
+      this.google.maps.event.trigger(map, 'resize');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      this.google.maps.event.trigger(map, 'resize');
+      
+      // 4. Force tile loading by changing zoom levels
+      map.setZoom(zoom - 1);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      map.setZoom(zoom);
+      
+      // 5. Force tile loading by panning slightly
+      const lat = center.lat();
+      const lng = center.lng();
+      map.panTo({lat: lat + 0.0002, lng: lng + 0.0002});
+      await new Promise(resolve => setTimeout(resolve, 200));
+      map.panTo({lat, lng});
+      
+      // 6. Final resize trigger
+      this.google.maps.event.trigger(map, 'resize');
+      
+      // Wait for map to stabilize
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Remove loading indicator
+      try {
+        container.removeChild(loadingDiv);
+      } catch (e) {
+        console.warn('Could not remove loading indicator:', e);
+      }
+      
+      console.log('✅ Map refresh forced successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ Error forcing map refresh:', error);
+      return false;
+    }
   }
 }
 

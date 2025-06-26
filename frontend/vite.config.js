@@ -2,7 +2,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
-import https from 'https' // Add https module
 
 export default defineConfig({
   plugins: [vue()],
@@ -19,13 +18,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://localhost:7135',
-        changeOrigin: true,
-        secure: false,
-        agent: new https.Agent({  
-          rejectUnauthorized: false // Ignore self-signed cert errors
-        })
-        // Removed rewrite to preserve /api path for backend
+        target: 'http://localhost:5001',
+        changeOrigin: true
       }
     }
   }

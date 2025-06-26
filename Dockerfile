@@ -4,6 +4,10 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
+
+# Build with Google Maps API key
+ARG VITE_GOOGLE_MAPS_API_KEY
+ENV VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 RUN npm run build
 
 # Backend build stage

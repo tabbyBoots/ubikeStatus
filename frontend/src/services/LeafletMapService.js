@@ -65,35 +65,124 @@ class LeafletMapService {
       title: options.title || ''
     }).addTo(map);
 
-    // Create different icon styles based on selection state
+    // Create enhanced icon styles based on selection state
     const isSelected = options.isSelected || false;
-    const iconColor = isSelected ? '#ff4444' : '#007bff';
-    const size = isSelected ? 40 : 32;
-    const fontSize = isSelected ? 20 : 16;
+    const distance = options.distance;
+    const availableBikes = options.availableBikes || 0;
+    const size = isSelected ? 48 : 36;
 
-    // Custom bike station icon
-    const bikeIcon = L.divIcon({
-      className: 'bike-station-marker',
-      html: `
-        <div style="
-          width: ${size}px;
-          height: ${size}px;
-          background: ${iconColor};
-          border: 2px solid white;
-          border-radius: 50%;
+    // Create enhanced marker HTML
+    let markerHTML = '';
+    
+    if (isSelected) {
+      // Focused station styling
+      markerHTML = `
+        <div class="marker-container" style="
+          position: relative;
           display: flex;
+          flex-direction: column;
           align-items: center;
-          justify-content: center;
-          font-size: ${fontSize}px;
-          font-weight: bold;
-          color: white;
           cursor: pointer;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          transition: all 0.2s ease;
-        ">🚴</div>
-      `,
-      iconSize: [size, size],
-      iconAnchor: [size/2, size/2]
+        ">
+          <div class="marker-main focused" style="
+            width: ${size}px;
+            height: ${size}px;
+            background: linear-gradient(135deg, #ff4444, #ff6b35);
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4);
+            transition: all 0.3s ease;
+            animation: focusedPulse 2s infinite;
+            z-index: 1000;
+          ">🚴</div>
+          <div class="marker-label" style="
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-top: 8px;
+            max-width: 150px;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          ">${options.title || ''}</div>
+        </div>
+      `;
+    } else {
+      // Nearby station styling with availability color coding
+      let borderColor = '#ffffff';
+      if (availableBikes === 0) {
+        borderColor = '#dc3545'; // Red for no bikes
+      } else if (availableBikes <= 4) {
+        borderColor = '#ffc107'; // Orange for low bikes
+      } else {
+        borderColor = '#28a745'; // Green for good availability
+      }
+
+      const distanceBadge = distance !== undefined ? `
+        <div class="distance-badge" style="
+          position: absolute;
+          bottom: -8px;
+          right: -8px;
+          background: #ffffff;
+          color: #2c3e50;
+          border: 1px solid #dee2e6;
+          border-radius: 10px;
+          padding: 2px 6px;
+          font-size: 10px;
+          font-weight: bold;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+          z-index: 101;
+        ">${distance < 1000 ? `${Math.round(distance)}m` : `${(distance/1000).toFixed(1)}km`}</div>
+      ` : '';
+      
+      markerHTML = `
+        <div class="marker-container" style="
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          cursor: pointer;
+        ">
+          <div class="marker-main nearby" style="
+            width: ${size}px;
+            height: ${size}px;
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            border: 2px solid ${borderColor};
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 3px 8px rgba(0, 123, 255, 0.3);
+            transition: all 0.3s ease;
+            z-index: 100;
+          ">🚴</div>
+          ${distanceBadge}
+        </div>
+      `;
+    }
+
+    // Custom enhanced bike station icon
+    const bikeIcon = L.divIcon({
+      className: 'enhanced-bike-station-marker',
+      html: markerHTML,
+      iconSize: [size + 20, size + 30], // Extra space for labels and badges
+      iconAnchor: [(size + 20)/2, size + 15] // Adjust anchor for labels
     });
 
     marker.setIcon(bikeIcon);
@@ -101,6 +190,32 @@ class LeafletMapService {
     // Set z-index for selected markers
     if (isSelected) {
       marker.setZIndexOffset(1000);
+    } else {
+      marker.setZIndexOffset(100);
+    }
+
+    // Add CSS animations if not already added
+    if (!document.getElementById('leaflet-marker-animations')) {
+      const style = document.createElement('style');
+      style.id = 'leaflet-marker-animations';
+      style.textContent = `
+        @keyframes focusedPulse {
+          0% { box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4); }
+          50% { box-shadow: 0 4px 20px rgba(255, 68, 68, 0.6); }
+          100% { box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4); }
+        }
+        
+        .enhanced-bike-station-marker .marker-main.nearby:hover {
+          transform: scale(1.1);
+          box-shadow: 0 4px 12px rgba(0, 123, 255, 0.5) !important;
+        }
+        
+        .enhanced-bike-station-marker {
+          background: transparent !important;
+          border: none !important;
+        }
+      `;
+      document.head.appendChild(style);
     }
     
     return marker;

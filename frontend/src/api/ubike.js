@@ -1,17 +1,9 @@
 import axios from 'axios';
 
-// Environment-based API configuration
-// Development: Use Vite proxy (/api)
-// Production: Use direct backend API (/api/ubike)
-const isDevelopment = import.meta.env.DEV || 
-                     (window.location.hostname === 'localhost' && 
-                      window.location.port !== '8080' && 
-                      window.location.port !== '8443');
+// Use consistent API URL for all environments
+const baseURL = '/api/ubike';
 
-const baseURL = isDevelopment ? '/api' : '/api/ubike';
-
-console.log(`🔧 API Environment: ${isDevelopment ? 'Development' : 'Production'}`);
-console.log(`🔗 API Base URL: ${baseURL}`);
+console.log(` API Base URL: ${baseURL}`);
 
 const apiClient = axios.create({
   baseURL,
