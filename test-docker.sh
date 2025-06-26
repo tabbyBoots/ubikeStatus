@@ -11,9 +11,22 @@ fi
 
 echo "✅ Docker is running"
 
-# Build the image
+# Check if Google Maps API key is set
+if [ -z "$VITE_GOOGLE_MAPS_API_KEY" ]; then
+    echo "⚠️  Warning: VITE_GOOGLE_MAPS_API_KEY environment variable is not set"
+    echo "   Street View functionality may not work in the Docker container"
+    echo "   To fix this, run: export VITE_GOOGLE_MAPS_API_KEY=your_api_key_here"
+    echo ""
+    echo "   Continuing build without API key..."
+    GOOGLE_MAPS_API_KEY=""
+else
+    GOOGLE_MAPS_API_KEY="$VITE_GOOGLE_MAPS_API_KEY"
+    echo "🗝️  Using Google Maps API Key: ${GOOGLE_MAPS_API_KEY:0:10}..."
+fi
+
+# Build the image with Google Maps API key
 echo "🔨 Building Docker image..."
-if docker build -t ubike-app-test .; then
+if docker build --build-arg VITE_GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY" -t ubike-app-test .; then
     echo "✅ Docker build successful"
 else
     echo "❌ Docker build failed"

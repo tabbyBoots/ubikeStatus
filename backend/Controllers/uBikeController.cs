@@ -6,7 +6,7 @@ using System.ComponentModel.DataAnnotations;
 namespace backend.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/ubike")]
 [Tags("uBike Stations")]
 public class uBikeController : Controller
 {

@@ -18,14 +18,19 @@
 
       <div class="modal-content">
         <div class="map-section">
-          <div ref="mapContainer" class="map-container"></div>
+          <!-- Regular Map -->
+          <div v-if="!showStreetView" ref="mapContainer" class="map-container"></div>
+          
+          <!-- Street View Panorama -->
+          <div v-if="showStreetView" ref="streetViewContainer" class="street-view-container"></div>
+          
           <div v-if="mapLoading" class="map-loading">
             <div class="loading-spinner"></div>
-            <p>載入地圖中...</p>
+            <p>{{ showStreetView ? '載入街景中...' : '載入地圖中...' }}</p>
           </div>
           <div v-if="mapError" class="map-error">
             <div class="error-icon">⚠️</div>
-            <h4>地圖載入失敗</h4>
+            <h4>{{ showStreetView ? '街景載入失敗' : '地圖載入失敗' }}</h4>
             <p>{{ mapError }}</p>
             <button @click="retryMapLoad" class="retry-btn">重新載入</button>
           </div>
@@ -59,12 +64,12 @@
               {{ directionsLoading ? '載入中...' : '取得路線' }}
             </button>
             
-            <button @click="toggleStreetView" class="action-btn streetview-btn">
+            <button @click="toggleStreetView" class="action-btn streetview-btn" :class="{ active: showStreetView }">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
                 <path d="M12 6V12L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
               </svg>
-              街景檢視
+              {{ showStreetView ? '返回地圖' : '街景檢視' }}
             </button>
 
             <button @click="findNearbyStations" class="action-btn nearby-btn" :disabled="nearbyLoading">
@@ -75,7 +80,6 @@
               {{ nearbyLoading ? '搜尋中...' : '附近站點' }}
             </button>
           </div>
-
 
           <div v-if="nearbyStations.length > 0" class="nearby-section">
             <h4>附近站點 ({{ nearbyStations.length }})</h4>
@@ -155,18 +159,21 @@ const emit = defineEmits(['close', 'station-selected']);
 
 // Refs
 const mapContainer = ref(null);
+const streetViewContainer = ref(null);
 const map = ref(null);
 const marker = ref(null);
-const allMarkers = ref([]); // Track all markers for proper cleanup
-const allInfoWindows = ref([]); // Track all info windows for proper cleanup
-const currentSelectedMarker = ref(null); // Track currently selected marker
+const allMarkers = ref([]);
+const allInfoWindows = ref([]);
+const markerRegistry = ref(new Map()); // Track markers by station ID
+const focusedStationId = ref(null); // Track currently focused station
 const mapLoading = ref(false);
 const mapError = ref('');
 const directionsLoading = ref(false);
 const nearbyLoading = ref(false);
 const directionsResult = ref(null);
 const nearbyStations = ref([]);
-const streetViewUrl = ref('');
+const streetViewPanorama = ref(null);
+const showStreetView = ref(false);
 const currentTravelMode = ref('WALKING');
 const userLocation = ref(null);
 const usingFallbackMap = ref(false);
@@ -181,7 +188,6 @@ const travelModes = [
 
 // 計算站點位置
 const stationPosition = computed(() => {
-  // Use the correct property names from the backend model
   const lat = props.station.latitude || 0;
   const lng = props.station.longitude || 0;
   
@@ -192,106 +198,149 @@ const stationPosition = computed(() => {
 });
 
 // Watch for visibility changes
-watch(() => props.isVisible, async (newVal, oldVal) => {
+watch(() => props.isVisible, async (newVal) => {
   if (newVal) {
     await nextTick();
+    
+    // Add a loop to wait for mapContainer.value to be a valid HTMLElement
+    let attempts = 0;
+    const maxAttempts = 10; // Try for up to 1 second (10 * 100ms)
+    const delay = 100; // ms
+    while (!mapContainer.value || !(mapContainer.value instanceof HTMLElement) && attempts < maxAttempts) {
+      console.log(`Waiting for mapContainer.value... Attempt ${attempts + 1}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      attempts++;
+    }
+
+    if (!mapContainer.value || !(mapContainer.value instanceof HTMLElement)) {
+      console.error('❌ Map container not available after multiple attempts.');
+      mapError.value = '地圖容器未準備好，無法顯示地圖。';
+      return;
+    }
+
     await initializeMap();
-    loadStreetView();
   } else {
     cleanup();
   }
 }, { immediate: true });
 
-// Watch for station changes
+// Watch for station changes: Full teardown and rebuild for reliability
 watch(() => props.station, async (newStation, oldStation) => {
-  // If the modal is visible and station changed, update the map
   if (props.isVisible && newStation && oldStation && newStation.sno !== oldStation.sno) {
-    await updateMapForNewStation();
+    console.log('Station changed, performing full map re-initialization.');
+    cleanup();
+    await nextTick(); // Wait for DOM to update after cleanup
+    await initializeMap();
+    
+    // After map is ready, find nearby stations for the new location
+    await findNearbyStations();
   }
 }, { immediate: true });
 
-// Methods
+// Simplified map initialization with Docker compatibility
 async function initializeMap() {
-  if (!mapContainer.value) return;
+  if (!mapContainer.value) {
+    console.error('❌ Map container not found');
+    return;
+  }
 
-  // Add container debugging
-  console.log('🔍 Map container:', mapContainer.value);
-  console.log('🔍 Container dimensions:', {
-    width: mapContainer.value.offsetWidth,
-    height: mapContainer.value.offsetHeight
-  });
+  console.log('🔄 Initializing map for station:', props.station.sna);
+  //console.log('📍 Station position:', stationPosition.value);
 
-  // Add small delay to ensure CSS is loaded
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
   mapLoading.value = true;
   mapError.value = '';
   usingFallbackMap.value = false;
-  
+
   try {
-    // Try Google Maps first
-    map.value = await GoogleMapsService.createMap(mapContainer.value, {
+    // Clear any existing content
+    mapContainer.value.innerHTML = '';
+    
+    // Ensure container has proper dimensions and is in DOM
+    mapContainer.value.style.width = '100%';
+    mapContainer.value.style.height = '100%';
+    mapContainer.value.style.minHeight = '400px';
+    mapContainer.value.style.display = 'block';
+    mapContainer.value.style.visibility = 'visible';
+    mapContainer.value.style.position = 'relative';
+    
+    // Force DOM reflow to ensure container is ready
+    void mapContainer.value.offsetHeight;
+    
+    // Add a small delay to ensure DOM is fully ready (helps with Docker environments)
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Try Google Maps first with simplified approach
+    const google = await GoogleMapsService.initialize();
+    
+    // Create map with basic options
+    map.value = new google.maps.Map(mapContainer.value, {
       center: stationPosition.value,
-      zoom: 16
+      zoom: 16,
+      mapTypeId: google.maps.MapTypeId.ROADMAP,
+      streetViewControl: true,
+      mapTypeControl: true,
+      fullscreenControl: true,
+      zoomControl: true
     });
 
-    marker.value = await GoogleMapsService.createAdvancedMarker(
+    // Create enhanced standard marker
+    marker.value = await GoogleMapsService.createStandardMarker(
       map.value,
       stationPosition.value,
       {
         title: props.station.sna,
-        isSelected: true
+        isSelected: true,
+        availableBikes: props.station.available_rent_bikes
       }
     );
 
-    //console.log('stationPosition.value', stationPosition.value);
-
-    const infoWindow = await GoogleMapsService.createInfoWindow(
-      `
-      <div style="padding: 10px; max-width: 200px;">
-        <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${props.station.sna}</h4>
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${props.station.ar}</p>
-        <div style="display: flex; justify-content: space-between; font-size: 14px;">
-          <span>🚴 ${props.station.available_rent_bikes}</span>
-          <span>🅿️ ${props.station.available_return_bikes}</span>
+    // Create info window
+    const infoWindow = new google.maps.InfoWindow({
+      content: `
+        <div style="padding: 10px; max-width: 200px;">
+          <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${props.station.sna}</h4>
+          <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${props.station.ar}</p>
+          <div style="display: flex; justify-content: space-between; font-size: 14px;">
+            <span>🚴 ${props.station.available_rent_bikes}</span>
+            <span>🅿️ ${props.station.available_return_bikes}</span>
+          </div>
         </div>
-      </div>
-    `,
-      {
-        pixelOffset: new google.maps.Size(0, -50), // Adjusted for AdvancedMarkerElement
-        disableAutoPan: false
-      }
-    );
-
-    // Track this marker and add click handler for selection
-    allMarkers.value.push({
-      marker: marker.value,
-      stationSno: props.station.sno,
-      infoWindow: infoWindow,
-      type: 'google-advanced' // Add type tracking
+      `
     });
 
-    
-    // AdvancedMarkerElement uses different event handling
-    marker.value.addEventListener('click', () => {
-      setMarkerAsSelected(props.station.sno);
+    // Add click listener to marker
+    marker.value.addListener('click', () => {
       infoWindow.open(map.value, marker.value);
     });
 
-    // ✅ ADD THIS: Open info window immediately when marker is created
-    // 按下站點後 小地圖立即顯示站點資訊
+    // Open info window immediately
     infoWindow.open(map.value, marker.value);
-    allInfoWindows.value.push(infoWindow);
 
+    // Track marker and info window in both systems
+    const markerData = {
+      marker: marker.value,
+      stationSno: props.station.sno,
+      infoWindow: infoWindow,
+      type: 'standard',
+      isSelected: true
+    };
+    
+    allMarkers.value.push(markerData);
+    allInfoWindows.value.push(infoWindow);
+    markerRegistry.value.set(props.station.sno, markerData);
+    focusedStationId.value = props.station.sno;
+
+    console.log('✅ Map initialized successfully');
 
     // Try to get user location
     try {
       userLocation.value = await GoogleMapsService.getCurrentLocation();
     } catch (error) {
-      console.error('User location not available:', error);
+      //console.log('ℹ️ User location not available:', error.message);
     }
 
   } catch (error) {
+    console.error('❌ Google Maps failed, trying fallback:', error);
     
     try {
       // Fallback to Leaflet/OpenStreetMap
@@ -311,49 +360,36 @@ async function initializeMap() {
         }
       );
 
-    const infoWindow = await LeafletMapService.createInfoWindow(
-      `
-      <div style="padding: 10px; max-width: 200px;">
-        <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${props.station.sna}</h4>
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${props.station.ar}</p>
-        <div style="display: flex; justify-content: space-between; font-size: 14px;">
-          <span>🚴 ${props.station.available_rent_bikes}</span>
-          <span>🅿️ ${props.station.available_return_bikes}</span>
+      const infoWindow = await LeafletMapService.createInfoWindow(
+        `
+        <div style="padding: 10px; max-width: 200px;">
+          <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${props.station.sna}</h4>
+          <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${props.station.ar}</p>
+          <div style="display: flex; justify-content: space-between; font-size: 14px;">
+            <span>🚴 ${props.station.available_rent_bikes}</span>
+            <span>🅿️ ${props.station.available_return_bikes}</span>
+          </div>
         </div>
-      </div>
-    `,
-      {
-        offset: [0, -30]
-      }
-    );
-      // ✅ ADD THIS: Open info window immediately when marker is created
-      // 按下站點後 小地圖立即顯示站點資訊
-      infoWindow.open(map.value, marker.value);
-      allInfoWindows.value.push(infoWindow);
+      `,
+        {
+          offset: [0, -30]
+        }
+      );
 
-      // Track this marker (add after marker creation)
+      infoWindow.open(map.value, marker.value);
+      
       allMarkers.value.push({
         marker: marker.value,
         stationSno: props.station.sno,
         infoWindow: infoWindow,
-        type: 'leaflet' // Add type tracking
+        type: 'leaflet'
       });
+      allInfoWindows.value.push(infoWindow);
 
-      // ✅ ADD THIS: Event listener for the new marker
-      marker.value.addEventListener('click', () => {
-        setMarkerAsSelected(props.station.sno);
-        infoWindow.open(map.value, marker.value);
-      });
-
-
-      // Try to get user location
-      try {
-        userLocation.value = await LeafletMapService.getCurrentLocation();
-      } catch (locationError) {
-        console.error('User location not available:', error);
-      }
+      console.log('✅ Fallback map initialized successfully');
 
     } catch (fallbackError) {
+      console.error('❌ All map services failed:', fallbackError);
       mapError.value = `地圖載入失敗: ${fallbackError.message}`;
     }
   } finally {
@@ -362,63 +398,23 @@ async function initializeMap() {
 }
 
 async function retryMapLoad() {
-  //console.log('🔄 Retrying map load...');
+  console.log('🔄 Retrying map load...');
   await initializeMap();
 }
 
-function clearAllMarkers() {
-  //console.log('🧹 Clearing all markers...');
-  
-  if (usingFallbackMap.value && map.value) {
-    // Clear all Leaflet markers
-    const layersToRemove = [];
-    map.value.eachLayer((layer) => {
-      if (layer instanceof L.Marker) {
-        layersToRemove.push(layer);
-      }
-    });
-    layersToRemove.forEach(layer => map.value.removeLayer(layer));
-  } else if (map.value) {
-    // Clear all Google Maps markers
-    if (marker.value) {
-      marker.value.setMap(null);
-    }
-    
-    // Clear any additional markers that might have been added
-    allMarkers.value.forEach(markerData => {
-      if (markerData && markerData.marker) {
-        markerData.marker.map = null;
-      }
-    });
-    
-    // Also clear any markers that might be attached to the map directly
-    if (map.value.markers) {
-      map.value.markers.forEach(m => m.setMap(null));
-      map.value.markers = [];
-    }
-  }
-  
-  allMarkers.value = [];
-  marker.value = null;
-  //console.log('✅ All markers cleared');
-}
-
-//更新地圖以顯示新站點
 async function updateMapForNewStation() {
   if (!map.value) return;
   
-  //console.log('🔄 Updating map for new station:', props.station.sna);
-  //console.log('📍 New station position:', stationPosition.value);
+  console.log('🔄 Updating map for new station:', props.station.sna);
   
   try {
-    // Clear all existing markers first
+    // Clear existing markers
     clearAllMarkers();
     
     if (usingFallbackMap.value) {
       // Update Leaflet map
       map.value.setView([stationPosition.value.lat, stationPosition.value.lng], 16);
       
-      // Create new marker with highlighted style for current station
       marker.value = await LeafletMapService.createMarker(
         map.value,
         stationPosition.value,
@@ -428,7 +424,6 @@ async function updateMapForNewStation() {
         }
       );
       
-      // Create new info window and open it immediately to show selection
       const infoWindow = await LeafletMapService.createInfoWindow(
         `
         <div style="padding: 10px; max-width: 200px;">
@@ -446,25 +441,39 @@ async function updateMapForNewStation() {
       );
       
       infoWindow.open(map.value, marker.value);
+
+      // FIX: Register the new main marker so it can be cleared later
+      const markerData = {
+        marker: marker.value,
+        stationSno: props.station.sno,
+        infoWindow: infoWindow,
+        type: 'leaflet',
+        isSelected: true
+      };
+      allMarkers.value.push(markerData);
+      allInfoWindows.value.push(infoWindow);
+      markerRegistry.value.set(props.station.sno, markerData);
+      focusedStationId.value = props.station.sno;
       
     } else {
       // Update Google Maps
       map.value.setCenter(stationPosition.value);
       map.value.setZoom(16);
       
-      // Create new marker with highlighted style for current station
-      marker.value = await GoogleMapsService.createAdvancedMarker(
+      const google = await GoogleMapsService.initialize();
+      
+      marker.value = await GoogleMapsService.createStandardMarker(
         map.value,
         stationPosition.value,
         {
           title: props.station.sna,
-          isSelected: true
+          isSelected: true,
+          availableBikes: props.station.available_rent_bikes
         }
       );
       
-      // Create new info window and open it to show selection
-      const infoWindow = await GoogleMapsService.createInfoWindow(
-        `
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
         <div style="padding: 10px; max-width: 200px;">
           <h4 style="margin: 0 0 8px 0; color: #2c3e50; font-weight: bold;">📍 ${props.station.sna}</h4>
           <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${props.station.ar}</p>
@@ -473,62 +482,163 @@ async function updateMapForNewStation() {
             <span>🅿️ ${props.station.available_return_bikes}</span>
           </div>
         </div>
-      `,
-        {
-          pixelOffset: new google.maps.Size(0, -50),
-          disableAutoPan: false
-        }
-      );
+      `
+      });
 
-      // ✅ ADD: Event listener for the new marker
-      marker.value.addEventListener('click', () => {
-        setMarkerAsSelected(props.station.sno);
+      marker.value.addListener('click', () => {
         infoWindow.open(map.value, marker.value);
       });
       
-      // add click handler
-      allMarkers.value.push({
+      infoWindow.open(map.value, marker.value);
+      
+      // FIX: Register the new main marker so it can be cleared later
+      const markerData = {
         marker: marker.value,
         stationSno: props.station.sno,
         infoWindow: infoWindow,
-        type: 'google-advanced'
-      });
-
-      // Open the info window to indicate selection
-      infoWindow.open(map.value, marker.value);
+        type: 'standard',
+        isSelected: true
+      };
+      allMarkers.value.push(markerData);
       allInfoWindows.value.push(infoWindow);
+      markerRegistry.value.set(props.station.sno, markerData);
+      focusedStationId.value = props.station.sno;
     }
     
-    // Clear previous data that's specific to the old station
+    // Clear previous data
     directionsResult.value = null;
     nearbyStations.value = [];
     
-    // Load street view for new station
-    loadStreetView();
-
-    // Auto-find nearby stations for the new selected station
+    // Find nearby stations
     await findNearbyStations();
     
-    //console.log('✅ Map updated successfully for new station');
+    console.log('✅ Map updated successfully for new station');
     
   } catch (error) {
     console.error('❌ Error updating map for new station:', error);
   }
 }
 
-function loadStreetView() {
-  if (usingFallbackMap.value) {
-    streetViewUrl.value = LeafletMapService.getStreetViewUrl(
-      stationPosition.value.lat,
-      stationPosition.value.lng
-    );
-  } else {
-    streetViewUrl.value = GoogleMapsService.getStreetViewUrl(
-      stationPosition.value.lat,
-      stationPosition.value.lng,
-      { size: '300x150' }
-    );
+function clearAllMarkers() {
+  console.log('🧹 Clearing all markers. Registry size:', markerRegistry.value.size, 'Array count:', allMarkers.value.length);
+  
+  if (usingFallbackMap.value && map.value) {
+    // Clear Leaflet markers - comprehensive approach
+    try {
+      // Method 1: Remove markers from registry
+      markerRegistry.value.forEach((markerData, stationId) => {
+        if (markerData && markerData.marker && markerData.type === 'leaflet') {
+          try {
+            map.value.removeLayer(markerData.marker);
+            console.log('🗑️ Removed Leaflet marker for station:', stationId);
+          } catch (error) {
+            console.warn('Error removing registry Leaflet marker:', error);
+          }
+        }
+      });
+      
+      // Method 2: Remove tracked markers from array
+      allMarkers.value.forEach(markerData => {
+        if (markerData && markerData.marker && markerData.type === 'leaflet') {
+          try {
+            map.value.removeLayer(markerData.marker);
+          } catch (error) {
+            console.warn('Error removing tracked Leaflet marker:', error);
+          }
+        }
+      });
+      
+      // Method 3: Remove all marker layers from map (safety net)
+      const layersToRemove = [];
+      map.value.eachLayer((layer) => {
+        if (layer instanceof L.Marker) {
+          layersToRemove.push(layer);
+        }
+      });
+      layersToRemove.forEach(layer => {
+        try {
+          map.value.removeLayer(layer);
+        } catch (error) {
+          console.warn('Error removing Leaflet layer:', error);
+        }
+      });
+      
+      console.log('✅ Cleared', layersToRemove.length, 'Leaflet markers total');
+    } catch (error) {
+      console.error('❌ Error clearing Leaflet markers:', error);
+    }
+    
+  } else if (map.value) {
+    // 清除地圖標記
+    try {
+      // Method 1: Remove markers from registry
+      markerRegistry.value.forEach((markerData, stationId) => {
+        if (markerData && markerData.marker) {
+          try {
+            markerData.marker.setMap(null);
+            if (markerData.infoWindow) {
+              markerData.infoWindow.close();
+            }
+            console.log('🗑️ Removed Google marker for station:', stationId);
+          } catch (error) {
+            console.warn('Error removing registry Google marker:', error);
+          }
+        }
+      });
+      
+      // Method 2: Remove tracked markers from array
+      allMarkers.value.forEach(markerData => {
+        if (markerData && markerData.marker) {
+          try {
+            // Handle different marker types
+            if (markerData.type === 'advanced' || markerData.type === 'standard') {
+              markerData.marker.setMap(null);
+            }
+            
+            // Close any associated info windows
+            if (markerData.infoWindow) {
+              markerData.infoWindow.close();
+            }
+          } catch (error) {
+            console.warn('Error removing tracked Google marker:', error);
+          }
+        }
+      });
+      
+      // Method 3: Clear main marker reference (safety net)
+      if (marker.value) {
+        try {
+          marker.value.setMap(null);
+        } catch (error) {
+          console.warn('Error removing main marker:', error);
+        }
+      }
+      
+      console.log('✅ Cleared Google Maps markers from registry and array');
+    } catch (error) {
+      console.error('❌ Error clearing Google Maps markers:', error);
+    }
   }
+  
+  // Close all info windows
+  allInfoWindows.value.forEach(infoWindow => {
+    try {
+      if (infoWindow && typeof infoWindow.close === 'function') {
+        infoWindow.close();
+      }
+    } catch (error) {
+      console.warn('Error closing info window:', error);
+    }
+  });
+  
+  // Reset all tracking systems
+  markerRegistry.value.clear();
+  allMarkers.value = [];
+  allInfoWindows.value = [];
+  marker.value = null;
+  focusedStationId.value = null;
+  
+  console.log('✅ All markers cleared and tracking systems reset');
 }
 
 async function getDirections() {
@@ -570,6 +680,9 @@ async function changeTravelMode(mode) {
 async function findNearbyStations() {
   nearbyLoading.value = true;
   
+  // Clear existing nearby markers before adding new ones
+  clearNearbyMarkers();
+  
   try {
     const service = usingFallbackMap.value ? LeafletMapService : GoogleMapsService;
     const nearby = await service.findNearbyStations(
@@ -578,10 +691,7 @@ async function findNearbyStations() {
       props.allStations.filter(s => s.sno !== props.station.sno)
     );
     
-    // Limit to max 5 closest stations
     nearbyStations.value = nearby.slice(0, 5);
-    
-    // Add markers for nearby stations on the map
     await addNearbyStationMarkers(nearbyStations.value);
     
   } catch (error) {
@@ -591,303 +701,34 @@ async function findNearbyStations() {
   }
 }
 
-function closeAllInfoWindows() {
-  //console.log('🔒 Closing all info windows...');
+function clearNearbyMarkers() {
+  if (!map.value) return;
   
-  if (usingFallbackMap.value) {
-    // Close all Leaflet popups
-    if (map.value && map.value.closePopup) {
-      map.value.closePopup();
-    }
-  } else {
-    // Close all Google Maps info windows
-    allInfoWindows.value.forEach(infoWindow => {
-      if (infoWindow && infoWindow.close) {
-        try {
-          infoWindow.close();
-        } catch (error) {
-          console.warn('Error closing info window:', error);
-        }
-      }
-    });
+  // Remove only nearby station markers (preserve main station marker)
+  for (const [sno, markerData] of markerRegistry.value.entries()) {
+    if (sno === props.station.sno) continue; // Skip main station
     
-    // Also close any info windows stored in marker data
-    allMarkers.value.forEach(markerData => {
-      if (markerData && markerData.infoWindow && markerData.infoWindow.close) {
-        try {
-          markerData.infoWindow.close();
-        } catch (error) {
-          console.warn('Error closing marker info window:', error);
-        }
-      }
-    });
-  }
-  
-  allInfoWindows.value = [];
-  //console.log('✅ All info windows closed');
-}
-
-  function closeAllInfoWindowsExcept(excludeStationSno) {
-    //console.log('🔒 Closing all info windows except for station:', excludeStationSno);
-
     if (usingFallbackMap.value) {
-      // For Leaflet, we need to close popups manually for each marker except the excluded one
-      allMarkers.value.forEach(markerData => {
-        if (markerData && markerData.stationSno !== excludeStationSno && markerData.marker) {
-          if (markerData.marker.getPopup && markerData.marker.getPopup()) {
-            markerData.marker.closePopup();
-          }
-        }
-      });
+      map.value.removeLayer(markerData.marker);
     } else {
-      // Close Google Maps info windows except for the excluded station
-      allInfoWindows.value.forEach(infoWindow => {
-        if (infoWindow && infoWindow.close) {
-          try {
-            infoWindow.close();
-          } catch (error) {
-            console.warn('Error closing info window:', error);
-          }
-        }
-      });
-
-      // Also close info windows stored in marker data, except for excluded station
-      allMarkers.value.forEach(markerData => {
-        if (markerData && markerData.stationSno !== excludeStationSno &&
-          markerData.infoWindow && markerData.infoWindow.close) {
-          try {
-            markerData.infoWindow.close();
-          } catch (error) {
-            console.warn('Error closing marker info window:', error);
-          }
-        }
-      });
+      markerData.marker.setMap(null);
     }
-
-    // Clear the tracking array but we'll rebuild it with the selected station's info window
-    allInfoWindows.value = [];
-    //console.log('✅ All info windows closed except selected station');
-  }
-
-
-
-function updateMarkerAppearance(targetStationSno, isSelected = false) {
-    const targetMarkerData = allMarkers.value.find(markerData =>
-      markerData && markerData.stationSno === targetStationSno
-    );
-
-    if (targetMarkerData && targetMarkerData.marker) {
-      try {
-        if (usingFallbackMap.value) {
-          // Update Leaflet marker appearance
-          const station = props.allStations.find(s => s.sno === targetStationSno) || props.station;
-          const iconColor = isSelected ? '#ff4444' : '#007bff';
-          const size = isSelected ? 40 : 32;
-          const fontSize = isSelected ? 20 : 16;
-
-          const updatedIcon = L.divIcon({
-            className: 'bike-station-marker',
-            html: `
-            <div style="
-              background: ${iconColor};
-              border: 2px solid white;
-              border-radius: 50%;
-              width: ${size}px;
-              height: ${size}px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-size: ${fontSize}px;
-              font-weight: bold;
-              color: white;
-              cursor: pointer;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-              transition: all 0.2s ease;
-            ">🚴</div>
-          `,
-            iconSize: [size, size],
-            iconAnchor: [size/2, size/2]
-          });
-
-          targetMarkerData.marker.setIcon(updatedIcon);
-          targetMarkerData.marker.setZIndexOffset(isSelected ? 1000 : 1);
-
-        } else {
-          // Update Google Maps AdvancedMarkerElement appearance
-          const station = props.allStations.find(s => s.sno === targetStationSno) || props.station;
-          const updatedContent = GoogleMapsService.createMarkerContent(station.sna, isSelected);
-
-          // Update the marker's content and z-index
-          targetMarkerData.marker.content = updatedContent;
-          targetMarkerData.marker.zIndex = isSelected ? 1000 : 1;
-        }
-      } catch (error) {
-        console.error('Error updating marker appearance:', error);
-      }
-    }
-  }
-
-
-
-  function setMarkerAsSelected(targetStationSno) {
-    //console.log('🎯 Setting marker as selected for station:', targetStationSno);
-
-    // Close all info windows
-    //closeAllInfoWindows();
-
-    // Reset ALL markers to normal state first
-    allMarkers.value.forEach(markerData => {
-      if (markerData && markerData.marker) {
-        if (markerData.type === 'google-advanced') {
-          // Reset Google Maps AdvancedMarkerElement
-          const station = props.allStations.find(s => s.sno === markerData.stationSno) || props.station;
-          const normalContent = GoogleMapsService.createMarkerContent(station.sna, false);
-          markerData.marker.content = normalContent;
-          markerData.marker.zIndex = 1;
-        } else if (markerData.type === 'leaflet') {
-          // Reset Leaflet marker
-          const normalIcon = L.divIcon({
-            className: 'bike-station-marker',
-            html: `
-            <div style="
-              width: 32px;
-              height: 32px;
-              background: #007bff;
-              border: 2px solid white;
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-size: 16px;
-              font-weight: bold;
-              color: white;
-              cursor: pointer;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-              transition: all 0.2s ease;
-            ">🚴</div>
-          `,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16]
-          });
-          markerData.marker.setIcon(normalIcon);
-          markerData.marker.setZIndexOffset(1);
-        }
-      }
-    });
     
-    // Reset ALL markers to normal state first
-    allMarkers.value.forEach(markerData => {
-      if (markerData && markerData.marker && markerData.stationSno !== targetStationSno) {
-        if (markerData.type === 'google-advanced') {
-          // Reset Google Maps AdvancedMarkerElement
-          const station = props.allStations.find(s => s.sno === markerData.stationSno) || props.station;
-          const normalContent = GoogleMapsService.createMarkerContent(station.sna, false);
-          markerData.marker.content = normalContent;
-          markerData.marker.zIndex = 1;
-        } else if (markerData.type === 'leaflet') {
-          // Reset Leaflet marker
-          const normalIcon = L.divIcon({
-            className: 'bike-station-marker',
-            html: `
-          <div style="
-            width: 32px;
-            height: 32px;
-            background: #007bff;
-            border: 2px solid white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-            font-weight: bold;
-            color: white;
-            cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            transition: all 0.2s ease;
-          ">🚴</div>
-        `,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16]
-          });
-          markerData.marker.setIcon(normalIcon);
-          markerData.marker.setZIndexOffset(1);
-        }
-      }
-    });
-
-    // Find and highlight the target marker
-    const targetMarkerData = allMarkers.value.find(markerData =>
-      markerData && markerData.stationSno === targetStationSno
-    );
-
-    if (targetMarkerData && targetMarkerData.marker) {
-      if (targetMarkerData.type === 'google-advanced') {
-        // Update Google Maps AdvancedMarkerElement to selected state
-        const station = props.allStations.find(s => s.sno === targetStationSno) || props.station;
-        const selectedContent = GoogleMapsService.createMarkerContent(station.sna, true);
-        targetMarkerData.marker.content = selectedContent;
-        targetMarkerData.marker.zIndex = 1000;
-      } else if (targetMarkerData.type === 'leaflet') {
-        // Update Leaflet marker to selected state
-        const selectedIcon = L.divIcon({
-          className: 'bike-station-marker',
-          html: `
-        <div style="
-          width: 40px;
-          height: 40px;
-          background: #ff4444;
-          border: 2px solid white;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 20px;
-          font-weight: bold;
-          color: white;
-          cursor: pointer;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          transition: all 0.2s ease;
-        ">🚴</div>
-      `,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20]
-        });
-        targetMarkerData.marker.setIcon(selectedIcon);
-        targetMarkerData.marker.setZIndexOffset(1000);
-      }
-
-      //console.log('✅ Marker set as selected');
-    } 
+    markerRegistry.value.delete(sno);
   }
-
+  
+  // Update allMarkers array
+  allMarkers.value = allMarkers.value.filter(marker =>
+    marker.stationSno === props.station.sno
+  );
+  
+  //console.log('🧹 Cleared all nearby markers');
+}
 
 async function addNearbyStationMarkers(nearbyStations) {
   if (!map.value || nearbyStations.length === 0) return;
   
-  //console.log('📍 Adding markers for nearby stations:', nearbyStations.length);
-  
-  // Clear only nearby markers, preserve main station marker
-const mainStationSno = props.station.sno;
-const markersToRemove = allMarkers.value.filter(markerData => 
-  markerData.stationSno !== mainStationSno
-);
-
-// Remove nearby markers from map
-markersToRemove.forEach(markerData => {
-  if (markerData && markerData.marker) {
-    if (usingFallbackMap.value) {
-      map.value.removeLayer(markerData.marker);
-    } else {
-      markerData.marker.map = null;
-    }
-  }
-});
-
-// Keep only the main station marker in tracking
-allMarkers.value = allMarkers.value.filter(markerData => 
-  markerData.stationSno === mainStationSno
-);
-
+  console.log('📍 Adding markers for nearby stations:', nearbyStations.length);
   
   for (const station of nearbyStations) {
     try {
@@ -897,17 +738,17 @@ allMarkers.value = allMarkers.value.filter(markerData =>
       };
       
       if (usingFallbackMap.value) {
-        // Add Leaflet marker for nearby station
         const nearbyMarker = await LeafletMapService.createMarker(
           map.value,
           position,
           {
             title: station.sna,
-            isSelected: true
+            isSelected: false,
+            distance: station.distance,
+            availableBikes: station.available_rent_bikes
           }
         );
         
-        // Create info window
         const infoWindow = await LeafletMapService.createInfoWindow(
           `
           <div style="padding: 10px; max-width: 200px;">
@@ -924,34 +765,35 @@ allMarkers.value = allMarkers.value.filter(markerData =>
           }
         );
         
-        // Track this marker
-        allMarkers.value.push({
+        const markerData = {
           marker: nearbyMarker,
           stationSno: station.sno,
           infoWindow: infoWindow,
-          type: 'leaflet' // Add type tracking
-        });
+          type: 'leaflet',
+          isSelected: false
+        };
         
-        // Add click handler to select this station
+        allMarkers.value.push(markerData);
+        markerRegistry.value.set(station.sno, markerData);
+        
         nearbyMarker.on('click', () => {
           handleNearbyStationClick(station.sno);
         });
         
       } else {
-        // Add Google Maps marker for nearby station
-        const nearbyMarker = await GoogleMapsService.createAdvancedMarker(
+        const nearbyMarker = await GoogleMapsService.createStandardMarker(
           map.value,
           position,
           {
             title: station.sna,
-            isSelected: false
+            isSelected: false,
+            distance: station.distance,
+            availableBikes: station.available_rent_bikes
           }
         );
-        //console.log('QQQ:Position-----> ',position);
-
-        // Create info window
-        const infoWindow = await GoogleMapsService.createInfoWindow(
-          `
+        
+        const infoWindow = new google.maps.InfoWindow({
+          content: `
           <div style="padding: 10px; max-width: 200px;">
             <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${station.sna}</h4>
             <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${station.ar}</p>
@@ -960,23 +802,21 @@ allMarkers.value = allMarkers.value.filter(markerData =>
               <span>🅿️ ${station.available_return_bikes}</span>
             </div>
           </div>
-        `,
-          {
-            pixelOffset: new google.maps.Size(0, -50), // Adjusted for AdvancedMarkerElement
-            disableAutoPan: false
-          }
-        );
+        `
+        });
         
-        // Track this marker
-        allMarkers.value.push({
+        const markerData = {
           marker: nearbyMarker,
           stationSno: station.sno,
           infoWindow: infoWindow,
-          type: 'google-advanced' // Add type tracking
-        });
+          type: 'standard',
+          isSelected: false
+        };
         
-        // Add click handler to select this station
-        nearbyMarker.addEventListener('click', () => {
+        allMarkers.value.push(markerData);
+        markerRegistry.value.set(station.sno, markerData);
+        
+        nearbyMarker.addListener('click', () => {
           handleNearbyStationClick(station.sno);
         });
       }
@@ -986,96 +826,84 @@ allMarkers.value = allMarkers.value.filter(markerData =>
     }
   }
   
-  // Set the current station as selected
-  setMarkerAsSelected(props.station.sno);
-  
   //console.log('✅ Added markers for all nearby stations');
 }
 
 async function handleNearbyStationClick(stationSno) {
-  //console.log('🎯 Nearby station clicked:', stationSno);
-  
-  // Find the clicked station data
-  const clickedStation = nearbyStations.value.find(station => station.sno === stationSno) || 
-                        props.allStations.find(station => station.sno === stationSno);
-  if (!clickedStation) {
-    console.error('❌ Station not found:', stationSno);
-    return;
-  }
+  console.log('🎯 Nearby station clicked:', stationSno);
 
-  // Close info windows for non-selected markers only
-  closeAllInfoWindowsExcept(stationSno);
-  
-  // Wait a moment for cleanup
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  // Set the clicked marker as selected and show its info window
-  setMarkerAsSelected(stationSno);
-  
-  // Wait for marker selection to complete
-  await new Promise(resolve => setTimeout(resolve, 200));
-  
-  // Find and open the info window for the selected marker
-  const targetMarkerData = allMarkers.value.find(markerData =>
-    markerData && markerData.stationSno === stationSno
-  );
-  
-  if (targetMarkerData && targetMarkerData.infoWindow) {
-    //console.log('✅ Opening info window for selected station');
-    targetMarkerData.infoWindow.open(map.value, targetMarkerData.marker);
-    allInfoWindows.value.push(targetMarkerData.infoWindow);
-  }
-  
-  // Clear nearby stations list after a delay to allow user to see the selection
-  //setTimeout(() => {
-  //  nearbyStations.value = [];
-  //}, 1000);
+  // Close all existing info windows. The watcher on props.station will handle the full map refresh.
+  closeAllInfoWindows();
 
-  // Update nearby stations for the new selected station instead of clearing
-  const newCenter = {
-    lat: parseFloat(clickedStation.latitude),
-    lng: parseFloat(clickedStation.longitude)
-  };
-
-  try {
-    const service = usingFallbackMap.value ? LeafletMapService : GoogleMapsService;
-    const nearby = await service.findNearbyStations(
-      newCenter,
-      500,
-      props.allStations.filter(s => s.sno !== stationSno)
-    );
-
-    // Update nearby stations list (keep it visible)
-    nearbyStations.value = nearby.slice(0, 5);
-
-    // Add markers for the new nearby stations
-    await addNearbyStationMarkers(nearbyStations.value);
-
-  } catch (error) {
-    console.error('Error updating nearby stations:', error);
-  }
-  
-  // Emit station selection to parent
+  // Emit event to parent, which will trigger the watcher to update the map
   emit('station-selected', stationSno);
 }
 
-function toggleStreetView() {
-  if (streetViewUrl.value) {
-    openFullStreetView();
-  } else {
-    loadStreetView();
-  }
+function closeAllInfoWindows() {
+  allInfoWindows.value.forEach(infoWindow => {
+    try {
+      if (infoWindow && typeof infoWindow.close === 'function') {
+        infoWindow.close();
+      }
+    } catch (error) {
+      console.warn('Error closing info window:', error);
+    }
+  });
 }
 
-function openFullStreetView() {
-  const lat = stationPosition.value.lat;
-  const lng = stationPosition.value.lng;
-  //console.log('🔍 Opening street view for coordinates:', { lat, lng });
+// The complex transitionMarkerStates function was removed.
+// It was conflicting with the watcher-based map update logic,
+// causing markers to not be cleared correctly. The watcher on `props.station`
+// now handles the entire map refresh, which is a more robust approach.
+
+async function toggleStreetView() {
+  showStreetView.value = !showStreetView.value;
   
-  // Use the correct Google Maps Street View URL format
-  const url = `https://www.google.com/maps/@${lat},${lng},3a,75y,90t/data=!3m6!1e1!3m4!1s0x0:0x0!2e0!7i13312!8i6656`;
-  //console.log('🔗 Street view URL:', url);
-  window.open(url, '_blank');
+  if (showStreetView.value) {
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    try {
+      mapLoading.value = true;
+      mapError.value = '';
+      
+      if (!streetViewContainer.value) {
+        throw new Error('Street View container not found');
+      }
+      
+      streetViewPanorama.value = await GoogleMapsService.createStreetViewPanorama(
+        streetViewContainer.value,
+        stationPosition.value,
+        {
+          pov: { heading: 0, pitch: 0 },
+          zoom: 1,
+          enableCloseButton: true
+        }
+      );
+      
+      console.log('✅ Street View panorama created successfully');
+      
+    } catch (error) {
+      console.error('❌ Error loading Street View:', error);
+      showStreetView.value = false;
+      mapError.value = `街景載入失敗: ${error.message}`;
+      alert('無法載入街景視圖，請稍後再試');
+    } finally {
+      mapLoading.value = false;
+    }
+  } else {
+    // Switching back to map view
+    // Clean up the panorama when hiding
+    if (streetViewPanorama.value) {
+      streetViewPanorama.value = null;
+    }
+    mapError.value = '';
+    
+    // Re-initialize the map to ensure it's correctly rendered with markers
+    await nextTick(); // Ensure DOM is ready for map container
+    await initializeMap(); // This will clear and re-add the main marker
+    await findNearbyStations(); // Re-add nearby markers
+  }
 }
 
 function getAvailabilityClass(count) {
@@ -1091,9 +919,33 @@ function closeModal() {
 function cleanup() {
   directionsResult.value = null;
   nearbyStations.value = [];
-  streetViewUrl.value = '';
+
+  // This will remove markers from the map and reset tracking arrays
+  clearAllMarkers();
+  
+  if (map.value) {
+    if (!usingFallbackMap.value) {
+      try {
+        const google = window.google;
+        if (google && google.maps && google.maps.event) {
+          google.maps.event.clearInstanceListeners(map.value);
+        }
+      } catch (error) {
+        console.warn('Error clearing map event listeners:', error);
+      }
+    } else {
+      try {
+        map.value.remove();
+      } catch (error) {
+        console.warn('Error removing Leaflet map:', error);
+      }
+    }
+  }
+  
   map.value = null;
-  marker.value = null;
+  // marker.value, allMarkers, etc. are already handled by clearAllMarkers()
+  showStreetView.value = false;
+  streetViewPanorama.value = null;
 }
 
 onUnmounted(() => {
@@ -1102,37 +954,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-
-/* Fix for AdvancedMarkerElement visibility */
-:deep(gmp-advanced-marker) {
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-  position: relative !important;
-}
-
-/* Ensure marker content is visible */
-:deep(gmp-advanced-marker div) {
-  display: flex !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  position: relative !important;
-  z-index: 1 !important;
-}
-
-/* Force marker content to be above map */
-:deep(.map-container gmp-advanced-marker) {
-  z-index: 1000 !important;
-}
-
-/* Ensure marker content has proper dimensions */
-:deep(gmp-advanced-marker div[style*="width"]) {
-  min-width: 32px !important;
-  min-height: 32px !important;
-}
-
-
 .map-modal-overlay {
   position: fixed;
   top: 0;
@@ -1211,8 +1032,25 @@ onUnmounted(() => {
 }
 
 .map-container {
-  width: 100%;
-  height: 100%;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 400px !important;
+  display: block !important;
+  visibility: visible !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.street-view-container {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 400px !important;
+  position: relative !important;
+  border-radius: 6px !important;
+  overflow: hidden !important;
+  display: block !important;
+  visibility: visible !important;
+  z-index: 1 !important;
 }
 
 .map-loading {
@@ -1376,7 +1214,11 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
-.street-view-section,
+.action-btn.active {
+  background: #007bff;
+  color: white;
+}
+
 .nearby-section,
 .directions-section {
   margin-bottom: 20px;
@@ -1391,43 +1233,11 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-.street-view-section h4,
 .nearby-section h4,
 .directions-section h4 {
   margin: 0 0 10px 0;
   color: #2c3e50;
   font-size: 14px;
-}
-
-.street-view-container {
-  position: relative;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.street-view-image {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.street-view-overlay {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  background: rgba(0, 0, 0, 0.8);
-  border: none;
-  border-radius: 6px;
-  padding: 6px;
-  cursor: pointer;
-  color: white;
-  transition: all 0.2s;
-  z-index: 10;
-}
-
-.street-view-overlay:hover {
-  background: rgba(0, 0, 0, 0.9);
-  transform: scale(1.1);
 }
 
 .nearby-list {

@@ -15,18 +15,15 @@ if (!string.IsNullOrEmpty(allowedHosts))
 
 // Configure Kestrel - use environment URLs or fallback to development defaults
 if (builder.Environment.IsDevelopment() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
+
 {
-    // Development mode with hardcoded HTTPS port (when not in Docker)
+    // Development mode with HTTP only when ASPNETCORE_URLS is not set
     builder.WebHost.ConfigureKestrel(serverOptions => {
-        serverOptions.ListenAnyIP(7135, listenOptions => {
-            listenOptions.UseHttps(httpsOptions => {
-                httpsOptions.SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | 
-                                          System.Security.Authentication.SslProtocols.Tls13;
-            });
-        });
+        serverOptions.ListenAnyIP(5001); // HTTP only in development
     });
 }
-// For Production/Docker, rely on ASPNETCORE_URLS environment variable
+// In production or when ASPNETCORE_URLS is set, let the framework handle the configuration
+// This allows Docker and other deployment scenarios to control the ports via environment variables
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -113,7 +110,11 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseHttpsRedirection();
+// Enable HTTPS redirection only in production
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseCors("AllowVueApp");
 

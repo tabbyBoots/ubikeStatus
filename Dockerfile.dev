@@ -1,0 +1,22 @@
+# Development Dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS development
+
+# Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs
+
+# Set environment variables
+ENV ASPNETCORE_ENVIRONMENT=Development
+ENV NODE_ENV=development
+
+# Create app directory
+WORKDIR /app
+
+# Install dependencies (will be overridden by volumes)
+COPY backend/backend.csproj ./backend/
+COPY frontend/package.json ./frontend/
+RUN dotnet restore ./backend/backend.csproj
+RUN cd frontend && npm install
+
+# Entry point will be overridden by docker-compose
+CMD ["echo", "Development container ready"]
