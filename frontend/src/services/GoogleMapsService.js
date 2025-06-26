@@ -13,6 +13,7 @@ class GoogleMapsService {
     this.placesService = null;
   }
 
+  // 地圖初始化
   async initialize() {
     if (!this.google) {
       // Check if API key exists
@@ -27,7 +28,6 @@ class GoogleMapsService {
         this.directionsService = new this.google.maps.DirectionsService();
         this.directionsRenderer = new this.google.maps.DirectionsRenderer();
       } catch (error) {
-        // Provide more specific error messages
         let errorMessage = 'Google Maps failed to load';
         if (error.message.includes('InvalidKeyMapError')) {
           errorMessage = 'Invalid Google Maps API key. Please check your API key configuration.';
@@ -40,13 +40,13 @@ class GoogleMapsService {
         } else {
           errorMessage = `Google Maps failed to load: ${error.message}`;
         }
-        
         throw new Error(errorMessage);
       }
     }
     return this.google;
   }
 
+  //建立地圖
   async createMap(container, options = {}) {
     const google = await this.initialize();
     const defaultOptions = {
@@ -60,21 +60,16 @@ class GoogleMapsService {
       ...options
     };
     
-    // Only add mapId if we want to use Advanced Markers
-    // For now, let's use standard markers to avoid the Map ID requirement
     const map = new google.maps.Map(container, defaultOptions);
-    
-    console.log('✅ Google Maps created successfully');
+    //console.log('✅ Google Maps created successfully');
     
     return map;
   }
 
-  
-
+  // 建立地圖標記
   async createStandardMarker(map, position, options = {}) {
     const google = await this.initialize();
-    
-    console.log('🔍 Creating enhanced standard marker with position:', position);
+    //console.log('🔍 Creating enhanced standard marker with position:', position);
     
     // Ensure position is in the correct format
     let markerPosition;
@@ -91,8 +86,8 @@ class GoogleMapsService {
     const availableBikes = options.availableBikes || 0;
     const distance = options.distance;
     
-    // Create custom icon using SVG
-    const size = isSelected ? 48 : 36;
+    // 調整被選中跟鄰近的站點 Marker icon 大小跟顏色
+    const size = isSelected ? 46 : 38;
     let backgroundColor, borderColor;
     
     if (isSelected) {
@@ -109,7 +104,7 @@ class GoogleMapsService {
       }
     }
     
-    // Create SVG icon with bike symbol
+    // 設定SVG繪製標記圖示，包含自行車符號和距離
     const svgIcon = `
       <svg width="${size}" height="${size + (isSelected ? 20 : 0)}" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -154,7 +149,8 @@ class GoogleMapsService {
         ` : ''}
       </svg>
     `;
-    
+
+    // 初始化Marker icon
     const marker = new google.maps.Marker({
       position: markerPosition,
       map: map,
@@ -167,25 +163,14 @@ class GoogleMapsService {
       }
     });
 
-    console.log('✅ Enhanced standard marker created successfully at:', markerPosition.toString());
     return marker;
   }
 
-  async createAdvancedMarker(map, position, options = {}) {
-    const google = await this.initialize();
-
-    // In Docker environments, Advanced Markers can cause IntersectionObserver issues
-    // Always fallback to standard markers for better compatibility
-    console.log('🔄 Using standard marker for Docker compatibility');
-    return await this.createStandardMarker(map, position, options);
-  }
-
   createMarkerContent(title, isSelected = false, options = {}) {
-    const size = isSelected ? 48 : 36;
+    const size = isSelected ? 46 : 38;
     const distance = options.distance;
     const availableBikes = options.availableBikes || 0;
     
-    // Create container for marker and badges
     const container = document.createElement('div');
     container.style.cssText = `
       position: relative;
@@ -199,7 +184,7 @@ class GoogleMapsService {
     const markerDiv = document.createElement('div');
     
     if (isSelected) {
-      // Focused station styling
+      // 被選中的站點樣式 Focused station styling
       markerDiv.style.cssText = `
         width: ${size}px;
         height: ${size}px;
@@ -219,7 +204,7 @@ class GoogleMapsService {
         z-index: 1000;
       `;
     } else {
-      // Nearby station styling with availability color coding
+      // 鄰近站點樣式並標示可用數量顏色
       let borderColor = '#ffffff';
       if (availableBikes === 0) {
         borderColor = '#dc3545'; // Red for no bikes
@@ -263,7 +248,7 @@ class GoogleMapsService {
     markerDiv.title = title;
     container.appendChild(markerDiv);
 
-    // Add distance badge for nearby stations
+    // 標示鄰近站點距離樣式
     if (!isSelected && distance !== undefined) {
       const distanceBadge = document.createElement('div');
       const distanceText = distance < 1000 ? `${Math.round(distance)}m` : `${(distance/1000).toFixed(1)}km`;
@@ -304,7 +289,10 @@ class GoogleMapsService {
         text-overflow: ellipsis;
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
       `;
-      nameLabel.textContent = title;
+      //nameLabel.textContent = title;
+      
+      //刪除站名前綴字
+      nameLabel.textContent = title.replace(/^YouBike2\.0_/, '');
       container.appendChild(nameLabel);
     }
 
@@ -671,7 +659,7 @@ class GoogleMapsService {
     // Add markers back to the map
     for (const markerInfo of markers) {
       if (markerInfo && markerInfo.position) {
-        const marker = await this.createAdvancedMarker(
+        const marker = await this.createStandardMarker(
           map,
           markerInfo.position,
           {

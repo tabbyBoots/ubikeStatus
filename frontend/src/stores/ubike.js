@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import uBikeApi from '../api/ubike';
+import ubikeApi from '../api/ubike';
 
 export const useUbikeStore = defineStore('ubike', {
     state: () => ({
@@ -85,7 +85,7 @@ export const useUbikeStore = defineStore('ubike', {
             this.isLoading = true;
             this.error = null;
             try {
-                const response = await uBikeApi.getStations();
+                const response = await ubikeApi.getStations();
                 // Ensure we always have an array, even if API returns unexpected data
                 this.stations = Array.isArray(response.data) ? response.data : [];
                 console.log(`📊 Loaded ${this.stations.length} stations`);
@@ -115,17 +115,12 @@ export const useUbikeStore = defineStore('ubike', {
             this.sortOrder = sortOrder;
         },
         showStationMap(station) {
-            //console.log('🏪 Store: showStationMap called with station:', station.sna);
             this.selectedStation = station;
             this.showMapModal = true;
-            //console.log('🏪 Store: showMapModal set to:', this.showMapModal);
-            //console.log('🏪 Store: selectedStation set to:', this.selectedStation?.sna);
         },
         hideStationMap() {
-            //console.log('🏪 Store: hideStationMap called');
             this.showMapModal = false;
             this.selectedStation = null;
-            //console.log('🏪 Store: showMapModal set to:', this.showMapModal);
         },
         getStationById(sno) {
             return this.stations.find(station => station.sno === sno);

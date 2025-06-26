@@ -201,16 +201,39 @@ const stationPosition = computed(() => {
 watch(() => props.isVisible, async (newVal) => {
   if (newVal) {
     await nextTick();
+    
+    // Add a loop to wait for mapContainer.value to be a valid HTMLElement
+    let attempts = 0;
+    const maxAttempts = 10; // Try for up to 1 second (10 * 100ms)
+    const delay = 100; // ms
+    while (!mapContainer.value || !(mapContainer.value instanceof HTMLElement) && attempts < maxAttempts) {
+      console.log(`Waiting for mapContainer.value... Attempt ${attempts + 1}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      attempts++;
+    }
+
+    if (!mapContainer.value || !(mapContainer.value instanceof HTMLElement)) {
+      console.error('❌ Map container not available after multiple attempts.');
+      mapError.value = '地圖容器未準備好，無法顯示地圖。';
+      return;
+    }
+
     await initializeMap();
   } else {
     cleanup();
   }
 }, { immediate: true });
 
-// Watch for station changes
+// Watch for station changes: Full teardown and rebuild for reliability
 watch(() => props.station, async (newStation, oldStation) => {
   if (props.isVisible && newStation && oldStation && newStation.sno !== oldStation.sno) {
-    await updateMapForNewStation();
+    console.log('Station changed, performing full map re-initialization.');
+    cleanup();
+    await nextTick(); // Wait for DOM to update after cleanup
+    await initializeMap();
+    
+    // After map is ready, find nearby stations for the new location
+    await findNearbyStations();
   }
 }, { immediate: true });
 
@@ -222,7 +245,7 @@ async function initializeMap() {
   }
 
   console.log('🔄 Initializing map for station:', props.station.sna);
-  console.log('📍 Station position:', stationPosition.value);
+  //console.log('📍 Station position:', stationPosition.value);
 
   mapLoading.value = true;
   mapError.value = '';
@@ -313,7 +336,7 @@ async function initializeMap() {
     try {
       userLocation.value = await GoogleMapsService.getCurrentLocation();
     } catch (error) {
-      console.log('ℹ️ User location not available:', error.message);
+      //console.log('ℹ️ User location not available:', error.message);
     }
 
   } catch (error) {
@@ -418,6 +441,19 @@ async function updateMapForNewStation() {
       );
       
       infoWindow.open(map.value, marker.value);
+
+      // FIX: Register the new main marker so it can be cleared later
+      const markerData = {
+        marker: marker.value,
+        stationSno: props.station.sno,
+        infoWindow: infoWindow,
+        type: 'leaflet',
+        isSelected: true
+      };
+      allMarkers.value.push(markerData);
+      allInfoWindows.value.push(infoWindow);
+      markerRegistry.value.set(props.station.sno, markerData);
+      focusedStationId.value = props.station.sno;
       
     } else {
       // Update Google Maps
@@ -455,13 +491,18 @@ async function updateMapForNewStation() {
       
       infoWindow.open(map.value, marker.value);
       
-      allMarkers.value.push({
+      // FIX: Register the new main marker so it can be cleared later
+      const markerData = {
         marker: marker.value,
         stationSno: props.station.sno,
         infoWindow: infoWindow,
-        type: 'standard'
-      });
+        type: 'standard',
+        isSelected: true
+      };
+      allMarkers.value.push(markerData);
       allInfoWindows.value.push(infoWindow);
+      markerRegistry.value.set(props.station.sno, markerData);
+      focusedStationId.value = props.station.sno;
     }
     
     // Clear previous data
@@ -528,7 +569,7 @@ function clearAllMarkers() {
     }
     
   } else if (map.value) {
-    // Clear Google Maps markers - comprehensive approach
+    // 清除地圖標記
     try {
       // Method 1: Remove markers from registry
       markerRegistry.value.forEach((markerData, stationId) => {
@@ -681,7 +722,7 @@ function clearNearbyMarkers() {
     marker.stationSno === props.station.sno
   );
   
-  console.log('🧹 Cleared all nearby markers');
+  //console.log('🧹 Cleared all nearby markers');
 }
 
 async function addNearbyStationMarkers(nearbyStations) {
@@ -785,27 +826,16 @@ async function addNearbyStationMarkers(nearbyStations) {
     }
   }
   
-  console.log('✅ Added markers for all nearby stations');
+  //console.log('✅ Added markers for all nearby stations');
 }
 
 async function handleNearbyStationClick(stationSno) {
   console.log('🎯 Nearby station clicked:', stationSno);
-  console.log('🔍 Current focused station:', focusedStationId.value);
-  console.log('🗺️ Registry size before transition:', markerRegistry.value.size);
-  
-  // Close all existing info windows before showing the new one
+
+  // Close all existing info windows. The watcher on props.station will handle the full map refresh.
   closeAllInfoWindows();
-  
-  const clickedStation = nearbyStations.value.find(station => station.sno === stationSno) ||
-                        props.allStations.find(station => station.sno === stationSno);
-  if (!clickedStation) {
-    console.error('❌ Station not found:', stationSno);
-    return;
-  }
 
-  // Perform smart marker state transition before emitting event
-  await transitionMarkerStates(focusedStationId.value, stationSno);
-
+  // Emit event to parent, which will trigger the watcher to update the map
   emit('station-selected', stationSno);
 }
 
@@ -821,183 +851,10 @@ function closeAllInfoWindows() {
   });
 }
 
-async function transitionMarkerStates(oldFocusedId, newFocusedId) {
-  console.log('🔄 Transitioning marker states:', oldFocusedId, '->', newFocusedId);
-  
-  if (!map.value) return;
-  
-  try {
-    // Step 1: Convert old focused marker to nearby marker (red -> blue)
-    if (oldFocusedId && markerRegistry.value.has(oldFocusedId)) {
-      const oldMarkerData = markerRegistry.value.get(oldFocusedId);
-      console.log('🔴➡️🔵 Converting old focused marker to nearby:', oldFocusedId);
-      
-      if (oldMarkerData && oldMarkerData.marker) {
-        // Remove old focused marker
-        if (usingFallbackMap.value) {
-          map.value.removeLayer(oldMarkerData.marker);
-        } else {
-          oldMarkerData.marker.setMap(null);
-        }
-        
-        // Create new nearby marker for old focused station
-        const oldStation = props.allStations.find(s => s.sno === oldFocusedId);
-        if (oldStation) {
-          const oldPosition = {
-            lat: parseFloat(oldStation.latitude),
-            lng: parseFloat(oldStation.longitude)
-          };
-          
-          // Calculate distance from new focused station
-          const newStation = props.allStations.find(s => s.sno === newFocusedId);
-          let distance = 0;
-          if (newStation) {
-            const service = usingFallbackMap.value ? LeafletMapService : GoogleMapsService;
-            distance = service.calculateDistance(
-              parseFloat(newStation.latitude), parseFloat(newStation.longitude),
-              parseFloat(oldStation.latitude), parseFloat(oldStation.longitude)
-            );
-          }
-          
-          if (usingFallbackMap.value) {
-            const newNearbyMarker = await LeafletMapService.createMarker(
-              map.value,
-              oldPosition,
-              {
-                title: oldStation.sna,
-                isSelected: false,
-                distance: distance,
-                availableBikes: oldStation.available_rent_bikes
-              }
-            );
-            
-            const newMarkerData = {
-              marker: newNearbyMarker,
-              stationSno: oldFocusedId,
-              infoWindow: oldMarkerData.infoWindow,
-              type: 'leaflet',
-              isSelected: false
-            };
-            
-            markerRegistry.value.set(oldFocusedId, newMarkerData);
-            
-            newNearbyMarker.on('click', () => {
-              handleNearbyStationClick(oldFocusedId);
-            });
-            
-          } else {
-            const newNearbyMarker = await GoogleMapsService.createStandardMarker(
-              map.value,
-              oldPosition,
-              {
-                title: oldStation.sna,
-                isSelected: false,
-                distance: distance,
-                availableBikes: oldStation.available_rent_bikes
-              }
-            );
-            
-            const newMarkerData = {
-              marker: newNearbyMarker,
-              stationSno: oldFocusedId,
-              infoWindow: oldMarkerData.infoWindow,
-              type: 'standard',
-              isSelected: false
-            };
-            
-            markerRegistry.value.set(oldFocusedId, newMarkerData);
-            
-            newNearbyMarker.addListener('click', () => {
-              handleNearbyStationClick(oldFocusedId);
-            });
-          }
-          
-          console.log('✅ Converted old focused marker to nearby marker');
-        }
-      }
-    }
-    
-    // Step 2: Convert clicked nearby marker to focused marker (blue -> red)
-    if (newFocusedId && markerRegistry.value.has(newFocusedId)) {
-      const clickedMarkerData = markerRegistry.value.get(newFocusedId);
-      console.log('🔵➡️🔴 Converting clicked nearby marker to focused:', newFocusedId);
-      
-      if (clickedMarkerData && clickedMarkerData.marker) {
-        // Remove clicked nearby marker
-        if (usingFallbackMap.value) {
-          map.value.removeLayer(clickedMarkerData.marker);
-        } else {
-          clickedMarkerData.marker.setMap(null);
-        }
-        
-        // Create new focused marker for clicked station
-        const clickedStation = props.allStations.find(s => s.sno === newFocusedId);
-        if (clickedStation) {
-          const clickedPosition = {
-            lat: parseFloat(clickedStation.latitude),
-            lng: parseFloat(clickedStation.longitude)
-          };
-          
-          if (usingFallbackMap.value) {
-            const newFocusedMarker = await LeafletMapService.createMarker(
-              map.value,
-              clickedPosition,
-              {
-                title: clickedStation.sna,
-                isSelected: true,
-                availableBikes: clickedStation.available_rent_bikes
-              }
-            );
-            
-            const newMarkerData = {
-              marker: newFocusedMarker,
-              stationSno: newFocusedId,
-              infoWindow: clickedMarkerData.infoWindow,
-              type: 'leaflet',
-              isSelected: true
-            };
-            
-            markerRegistry.value.set(newFocusedId, newMarkerData);
-            marker.value = newFocusedMarker;
-            
-          } else {
-            const newFocusedMarker = await GoogleMapsService.createStandardMarker(
-              map.value,
-              clickedPosition,
-              {
-                title: clickedStation.sna,
-                isSelected: true,
-                availableBikes: clickedStation.available_rent_bikes
-              }
-            );
-            
-            const newMarkerData = {
-              marker: newFocusedMarker,
-              stationSno: newFocusedId,
-              infoWindow: clickedMarkerData.infoWindow,
-              type: 'standard',
-              isSelected: true
-            };
-            
-            markerRegistry.value.set(newFocusedId, newMarkerData);
-            marker.value = newFocusedMarker;
-          }
-          
-          console.log('✅ Converted clicked nearby marker to focused marker');
-        }
-      }
-    }
-    
-    // Step 3: Update focused station tracking
-    focusedStationId.value = newFocusedId;
-    
-    console.log('✅ Marker state transition completed');
-    console.log('🗺️ Registry size after transition:', markerRegistry.value.size);
-    
-  } catch (error) {
-    console.error('❌ Error during marker state transition:', error);
-  }
-}
+// The complex transitionMarkerStates function was removed.
+// It was conflicting with the watcher-based map update logic,
+// causing markers to not be cleared correctly. The watcher on `props.station`
+// now handles the entire map refresh, which is a more robust approach.
 
 async function toggleStreetView() {
   showStreetView.value = !showStreetView.value;
@@ -1035,24 +892,17 @@ async function toggleStreetView() {
       mapLoading.value = false;
     }
   } else {
+    // Switching back to map view
     // Clean up the panorama when hiding
     if (streetViewPanorama.value) {
       streetViewPanorama.value = null;
     }
     mapError.value = '';
     
-    // Simple map refresh
-    await nextTick();
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    if (map.value && !usingFallbackMap.value) {
-      const google = await GoogleMapsService.initialize();
-      google.maps.event.trigger(map.value, 'resize');
-      map.value.setCenter(stationPosition.value);
-    } else if (map.value && usingFallbackMap.value) {
-      map.value.invalidateSize(true);
-      map.value.setView([stationPosition.value.lat, stationPosition.value.lng], 16);
-    }
+    // Re-initialize the map to ensure it's correctly rendered with markers
+    await nextTick(); // Ensure DOM is ready for map container
+    await initializeMap(); // This will clear and re-add the main marker
+    await findNearbyStations(); // Re-add nearby markers
   }
 }
 
@@ -1069,6 +919,9 @@ function closeModal() {
 function cleanup() {
   directionsResult.value = null;
   nearbyStations.value = [];
+
+  // This will remove markers from the map and reset tracking arrays
+  clearAllMarkers();
   
   if (map.value) {
     if (!usingFallbackMap.value) {
@@ -1090,9 +943,7 @@ function cleanup() {
   }
   
   map.value = null;
-  marker.value = null;
-  allMarkers.value = [];
-  allInfoWindows.value = [];
+  // marker.value, allMarkers, etc. are already handled by clearAllMarkers()
   showStreetView.value = false;
   streetViewPanorama.value = null;
 }
