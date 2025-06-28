@@ -52,7 +52,9 @@ function toggleFavorite() {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  /* transition-property: all; */
+  /* transition-duration: 0.2s; */
+  /* transition-timing-function: ease; */
   width: 32px;
   height: 32px;
 }
@@ -67,7 +69,9 @@ function toggleFavorite() {
 }
 
 .favorites-btn svg {
-  transition: all 0.2s ease;
+  /* transition-property: all; */
+  /* transition-duration: 0.2s; */
+  /* transition-timing-function: ease; */
 }
 
 .favorites-btn:hover svg {

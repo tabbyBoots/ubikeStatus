@@ -39,7 +39,7 @@
           <button class="btn btn-primary" :class="{ active: filterType === 'favorites' }" @click="setFilter('favorites')">
             ❤️ 我的最愛 ({{ favoritesStore.favoriteCount }})
           </button>
-<button @click="toggleStats" class="btn btn-primary">
+<button @click="toggleStats" class="btn btn-primary" v-if="viewMode !== 'map'">
   {{ showStats ? '隱藏統計資訊' : '統計資訊' }}
 </button>
           <button class="btn btn-primary" :class="{ active: filterType === 'available' }" @click="setFilter('available')">
@@ -192,12 +192,21 @@
       </div>
     </div>
 
+    <!-- Map View -->
+    <StationsMap
+      v-if="!loading && !error && viewMode === 'map'"
+      :stations="stations"
+      :filtered-stations="filteredStationsForMap"
+      @station-selected="handleStationSelected"
+    />
+
     <!-- Map Modal -->
     <MapModal 
       v-if="store.selectedStation"
       :station="store.selectedStation"
       :is-visible="store.showMapModal"
       :all-stations="stations"
+      :is-main-view-map="viewMode === 'map'"
       @close="store.hideStationMap()"
       @station-selected="handleStationSelected"
     />
@@ -212,6 +221,7 @@ import ViewToggle from './ViewToggle.vue';
 import ExportButton from './ExportButton.vue';
 import FavoritesButton from './FavoritesButton.vue';
 import MapModal from './maps/MapModal.vue';
+import StationsMap from './maps/StationsMap.vue';
 
 const store = useUbikeStore();
 const favoritesStore = useFavoritesStore();
@@ -243,6 +253,13 @@ const filteredStations = computed(() => {
   
   return filtered;
 });
+
+const filteredStationsForMap = computed(() => {
+  // Always apply user filters (favorites, available bikes, parking spots) even in map mode
+  // The map component will handle geographic filtering on top of these user filters
+  return filteredStations.value;
+});
+
 const searchTerm = computed({
   get: () => store.searchTerm,
   set: (value) => store.setSearchTerm(value)
@@ -334,7 +351,9 @@ onMounted(() => {
   fetchStations();
   // Auto refresh every 60 seconds
   refreshInterval.value = setInterval(() => {
-    fetchStations();
+    if (!store.autoRefreshPaused) {
+      fetchStations();
+    }
   }, 60000);
 });
 
@@ -398,7 +417,8 @@ onUnmounted(() => {
   border: 2px solid #e9ecef;
   border-radius: 8px;
   font-size: 14px;
-  transition: border-color 0.2s;
+  transition-property: border-color;
+  transition-duration: 0.2s;
 }
 
 .search-box input:focus {
@@ -428,7 +448,9 @@ onUnmounted(() => {
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition-property: all;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
   white-space: nowrap;
 }
 
@@ -558,7 +580,8 @@ onUnmounted(() => {
 
 .station-row {
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition-property: background-color;
+  transition-duration: 0.2s;
 }
 
 .station-row:hover {
@@ -634,7 +657,9 @@ onUnmounted(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   padding: 20px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition-property: all;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
 }
 
 .station-card:hover {

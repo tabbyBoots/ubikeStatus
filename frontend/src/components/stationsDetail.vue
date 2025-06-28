@@ -309,7 +309,8 @@ export default {
   align-items: center;
   padding: 20px;
   border-radius: 10px;
-  transition: transform 0.3s;
+  transition-property: transform;
+  transition-duration: 0.3s;
 }
 
 .availability-item:hover {

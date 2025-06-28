@@ -55,7 +55,7 @@
               {{ showStreetView ? '返回地圖' : '街景檢視' }}
             </button>
 
-            <button @click="findNearbyStations(true)" class="action-btn nearby-btn" :disabled="nearbyLoading">
+            <button @click="findNearbyStations(true)" class="action-btn nearby-btn" :disabled="nearbyLoading || isMainViewMap">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
@@ -123,6 +123,7 @@ import GoogleMapsService from '@/services/GoogleMapsService';
 import LeafletMapService from '@/services/LeafletMapService';
 import FavoritesButton from '@/components/FavoritesButton.vue';
 import InfoWindowContent from './InfoWindowContent.vue';
+import { useUbikeStore } from '@/stores/ubike';
 
 const props = defineProps({
   station: {
@@ -136,10 +137,17 @@ const props = defineProps({
   allStations: {
     type: Array,
     default: () => []
+  },
+  isMainViewMap: {
+    type: Boolean,
+    default: false
   }
 });
 
 const emit = defineEmits(['close', 'station-selected']);
+
+// Store
+const ubikeStore = useUbikeStore();
 
 // Refs
 const mapContainer = ref(null);
@@ -185,6 +193,9 @@ const stationPosition = computed(() => {
 // Watch for visibility changes
 watch(() => props.isVisible, async (newVal) => {
   if (newVal) {
+    // Pause auto-refresh when modal opens
+    ubikeStore.pauseAutoRefresh('mapModal');
+    
     await nextTick();
     
     // Add a loop to wait for mapContainer.value to be a valid HTMLElement
@@ -205,6 +216,8 @@ watch(() => props.isVisible, async (newVal) => {
 
     await initializeMap();
   } else {
+    // Resume auto-refresh when modal closes
+    ubikeStore.resumeAutoRefresh('mapModal');
     cleanup();
   }
 }, { immediate: true });
@@ -860,11 +873,13 @@ async function toggleStreetView() {
       if (!streetViewContainer.value) {
         throw new Error('Street View container not found');
       }
+
+      await GoogleMapsService.initialize();
       
       streetViewPanorama.value = await GoogleMapsService.createStreetViewPanorama(
         streetViewContainer.value,
-        stationPosition.value,
         {
+          position: stationPosition.value,
           pov: { heading: 0, pitch: 0 },
           zoom: 1,
           enableCloseButton: true
@@ -1035,7 +1050,8 @@ onUnmounted(() => {
   padding: 8px;
   border-radius: 50%;
   color: #6c757d;
-  transition: all 0.2s;
+  transition-property: all;
+  transition-duration: 0.2s;
 }
 
 .close-btn:hover {
@@ -1146,7 +1162,8 @@ onUnmounted(() => {
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-  transition: background 0.2s;
+  transition-property: background;
+  transition-duration: 0.2s;
 }
 
 .retry-btn:hover {
@@ -1220,7 +1237,8 @@ onUnmounted(() => {
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-  transition: all 0.2s;
+  transition-property: all;
+  transition-duration: 0.2s;
   background: white;
   color: #495057;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -1277,7 +1295,8 @@ onUnmounted(() => {
   background: #f8f9fa;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition-property: background;
+  transition-duration: 0.2s;
 }
 
 .nearby-item:hover {
@@ -1333,7 +1352,8 @@ onUnmounted(() => {
   background: white;
   cursor: pointer;
   font-size: 11px;
-  transition: all 0.2s;
+  transition-property: all;
+  transition-duration: 0.2s;
 }
 
 .mode-btn:hover {

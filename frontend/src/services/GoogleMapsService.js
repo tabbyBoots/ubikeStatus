@@ -199,7 +199,7 @@ class GoogleMapsService {
         color: white;
         cursor: pointer;
         box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4);
-        transition: all 0.3s ease;
+        /* transition: all 0.3s ease; */
         animation: focusedPulse 2s infinite;
         z-index: 1000;
       `;
@@ -228,7 +228,7 @@ class GoogleMapsService {
         color: white;
         cursor: pointer;
         box-shadow: 0 3px 8px rgba(0, 123, 255, 0.3);
-        transition: all 0.3s ease;
+        /* transition: all 0.3s ease; */
         z-index: 100;
       `;
       
@@ -405,8 +405,7 @@ class GoogleMapsService {
         return { ...station, distance };
       })
       .filter(station => station.distance <= radius)
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, 5); // Limit to 5 nearest stations
+      .sort((a, b) => a.distance - b.distance);
 
     return nearbyStations;
   }
@@ -455,6 +454,11 @@ class GoogleMapsService {
     return `https://maps.googleapis.com/maps/api/streetview?${params.toString()}`;
   }
 
+  static async createStreetViewPanorama(element, options) {
+    await this.initialize();
+    return new google.maps.StreetViewPanorama(element, options);
+  }
+
   async getCurrentLocation() {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
@@ -481,7 +485,7 @@ class GoogleMapsService {
     });
   }
 
-  async createStreetViewPanorama(container, position, options = {}) {
+  async createStreetViewPanorama(container, options = {}) {
     const google = await this.initialize();
     
     // Add loading indicator
@@ -528,7 +532,6 @@ class GoogleMapsService {
     void container.offsetHeight;
     
     const defaultOptions = {
-      position,
       pov: { heading: 0, pitch: 0 },
       zoom: 1,
       addressControl: false,
@@ -547,6 +550,13 @@ class GoogleMapsService {
     
     // Create the panorama
     const panorama = new google.maps.StreetViewPanorama(container, defaultOptions);
+
+    // Add event listener for when the user exits Street View
+    if (options.onVisibleChanged) {
+        google.maps.event.addListener(panorama, 'visible_changed', () => {
+            options.onVisibleChanged(panorama.getVisible());
+        });
+    }
     
     // Add event listeners for loading and errors
     google.maps.event.addListenerOnce(panorama, 'status_changed', () => {

@@ -15,7 +15,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
         <span class="button-text">街景</span>
       </button>
-      <button class="info-window-btn" @click="emitNearbyStations">
+      <button v-if="!isMapView" class="info-window-btn" @click="emitNearbyStations">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="10"/></svg>
         <span class="button-text">附近</span>
       </button>
@@ -24,12 +24,14 @@
 </template>
 
 <script setup>
-
-
 const props = defineProps({
   station: {
     type: Object,
     required: true
+  },
+  isMapView: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -97,7 +99,8 @@ const emitNearbyStations = () => {
   display: flex;
   align-items: center;
   gap: 3px;
-  transition: background 0.2s;
+  transition-property: background;
+  transition-duration: 0.2s;
 }
 
 .info-window-btn:hover {

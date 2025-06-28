@@ -13,7 +13,9 @@ export const useUbikeStore = defineStore('ubike', {
         sortBy: 'sna',
         sortOrder: 'asc',
         selectedStation: null,
-        showMapModal: false
+        showMapModal: false,
+        autoRefreshPaused: false,
+        activeModals: new Set()
     }),
     getters: {
         areas: (state) => [...new Set(state.stations.map(s => s.sarea))].sort(),
@@ -129,6 +131,16 @@ export const useUbikeStore = defineStore('ubike', {
             this.searchTerm = '';
             this.selectedArea = '';
             this.filterType = 'all';
+        },
+        pauseAutoRefresh(reason) {
+            this.activeModals.add(reason);
+            this.autoRefreshPaused = this.activeModals.size > 0;
+            console.log(`🔄 Auto-refresh paused: ${reason}. Active modals:`, Array.from(this.activeModals));
+        },
+        resumeAutoRefresh(reason) {
+            this.activeModals.delete(reason);
+            this.autoRefreshPaused = this.activeModals.size > 0;
+            console.log(`🔄 Auto-refresh ${this.autoRefreshPaused ? 'still paused' : 'resumed'}. Removed: ${reason}. Active modals:`, Array.from(this.activeModals));
         }
     }
 });

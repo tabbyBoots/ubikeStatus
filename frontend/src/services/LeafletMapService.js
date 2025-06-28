@@ -98,7 +98,7 @@ class LeafletMapService {
             color: white;
             cursor: pointer;
             box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4);
-            transition: all 0.3s ease;
+            /* transition: all 0.3s ease; */
             animation: focusedPulse 2s infinite;
             z-index: 1000;
           ">🚴</div>
@@ -169,7 +169,7 @@ class LeafletMapService {
             color: white;
             cursor: pointer;
             box-shadow: 0 3px 8px rgba(0, 123, 255, 0.3);
-            transition: all 0.3s ease;
+            /* transition: all 0.3s ease; */
             z-index: 100;
           ">🚴</div>
           ${distanceBadge}
