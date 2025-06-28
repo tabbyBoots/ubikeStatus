@@ -3,7 +3,7 @@
     <div class="map-modal" @click.stop>
       <div class="modal-header">
         <div class="station-info">
-          <h3>{{ station.sna }}</h3>
+          <h3>{{ formatStationName(station.sna) }}</h3>
           <p class="station-address">{{ station.ar }}</p>
         </div>
         <div class="modal-actions">
@@ -37,24 +37,7 @@
         </div>
 
         <div class="info-section">
-          <div class="station-stats">
-            <div class="stat-item">
-              <div class="stat-number" :class="getAvailabilityClass(station.available_rent_bikes)">
-                {{ station.available_rent_bikes }}
-              </div>
-              <div class="stat-label">可借車輛</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-number" :class="getAvailabilityClass(station.available_return_bikes)">
-                {{ station.available_return_bikes }}
-              </div>
-              <div class="stat-label">可停車位</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-number">{{ station.total }}</div>
-              <div class="stat-label">總車位</div>
-            </div>
-          </div>
+          
 
           <div class="action-buttons">
             <button @click="getDirections" class="action-btn directions-btn" :disabled="directionsLoading">
@@ -72,7 +55,7 @@
               {{ showStreetView ? '返回地圖' : '街景檢視' }}
             </button>
 
-            <button @click="findNearbyStations" class="action-btn nearby-btn" :disabled="nearbyLoading">
+            <button @click="findNearbyStations(true)" class="action-btn nearby-btn" :disabled="nearbyLoading">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
@@ -81,7 +64,7 @@
             </button>
           </div>
 
-          <div v-if="nearbyStations.length > 0" class="nearby-section">
+          <div v-if="nearbyStations.length > 0" class="nearby-section" ref="nearbySectionRef">
             <h4>附近站點 ({{ nearbyStations.length }})</h4>
             <div class="nearby-list">
               <div 
@@ -91,7 +74,7 @@
                 @click="handleNearbyStationClick(nearbyStation.sno)"
               >
                 <div class="nearby-info">
-                  <div class="nearby-name">{{ nearbyStation.sna }}</div>
+                  <div class="nearby-name">{{ formatStationName(nearbyStation.sna) }}</div>
                   <div class="nearby-distance">{{ Math.round(nearbyStation.distance) }}m</div>
                 </div>
                 <div class="nearby-stats">
@@ -135,10 +118,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onUnmounted, createApp } from 'vue';
 import GoogleMapsService from '@/services/GoogleMapsService';
 import LeafletMapService from '@/services/LeafletMapService';
 import FavoritesButton from '@/components/FavoritesButton.vue';
+import InfoWindowContent from './InfoWindowContent.vue';
 
 const props = defineProps({
   station: {
@@ -172,6 +156,7 @@ const directionsLoading = ref(false);
 const nearbyLoading = ref(false);
 const directionsResult = ref(null);
 const nearbyStations = ref([]);
+const nearbySectionRef = ref(null); // Ref for the nearby stations section
 const streetViewPanorama = ref(null);
 const showStreetView = ref(false);
 const currentTravelMode = ref('WALKING');
@@ -233,9 +218,23 @@ watch(() => props.station, async (newStation, oldStation) => {
     await initializeMap();
     
     // After map is ready, find nearby stations for the new location
-    await findNearbyStations();
+    await findNearbyStations(false);
   }
 }, { immediate: true });
+
+// Watch for showStreetView changes to handle native exit button
+watch(showStreetView, async (newVal) => {
+  if (!newVal) {
+    // Switching back to map view
+    if (streetViewPanorama.value) {
+      streetViewPanorama.value = null;
+    }
+    mapError.value = '';
+    await nextTick();
+    await initializeMap();
+    await findNearbyStations();
+  }
+});
 
 // Simplified map initialization with Docker compatibility
 async function initializeMap() {
@@ -295,26 +294,22 @@ async function initializeMap() {
     );
 
     // Create info window
+    const infoWindowContentDiv = document.createElement('div');
+    infoWindowContentDiv.id = 'google-maps-info-window-content'; // Assign an ID for consistency, though not strictly needed for direct mounting
     const infoWindow = new google.maps.InfoWindow({
-      content: `
-        <div style="padding: 10px; max-width: 200px;">
-          <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${props.station.sna}</h4>
-          <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${props.station.ar}</p>
-          <div style="display: flex; justify-content: space-between; font-size: 14px;">
-            <span>🚴 ${props.station.available_rent_bikes}</span>
-            <span>🅿️ ${props.station.available_return_bikes}</span>
-          </div>
-        </div>
-      `
+      content: infoWindowContentDiv
     });
 
     // Add click listener to marker
     marker.value.addListener('click', () => {
       infoWindow.open(map.value, marker.value);
+      // Render Vue component into info window
+      renderInfoWindowContent(infoWindowContentDiv, props.station);
     });
 
     // Open info window immediately
     infoWindow.open(map.value, marker.value);
+    renderInfoWindowContent(infoWindowContentDiv, props.station);
 
     // Track marker and info window in both systems
     const markerData = {
@@ -360,23 +355,17 @@ async function initializeMap() {
         }
       );
 
+      const infoWindowContentDiv = document.createElement('div');
+      infoWindowContentDiv.id = 'leaflet-info-window-content';
       const infoWindow = await LeafletMapService.createInfoWindow(
-        `
-        <div style="padding: 10px; max-width: 200px;">
-          <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${props.station.sna}</h4>
-          <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${props.station.ar}</p>
-          <div style="display: flex; justify-content: space-between; font-size: 14px;">
-            <span>🚴 ${props.station.available_rent_bikes}</span>
-            <span>🅿️ ${props.station.available_return_bikes}</span>
-          </div>
-        </div>
-      `,
+        infoWindowContentDiv,
         {
           offset: [0, -30]
         }
       );
 
       infoWindow.open(map.value, marker.value);
+      renderInfoWindowContent(infoWindowContentDiv, props.station, 'leaflet');
       
       allMarkers.value.push({
         marker: marker.value,
@@ -424,21 +413,17 @@ async function updateMapForNewStation() {
         }
       );
       
+      const infoWindowContentDiv = document.createElement('div');
+      infoWindowContentDiv.id = 'leaflet-info-window-content';
       const infoWindow = await LeafletMapService.createInfoWindow(
-        `
-        <div style="padding: 10px; max-width: 200px;">
-          <h4 style="margin: 0 0 8px 0; color: #2c3e50; font-weight: bold;">📍 ${props.station.sna}</h4>
-          <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${props.station.ar}</p>
-          <div style="display: flex; justify-content: space-between; font-size: 14px;">
-            <span>🚴 ${props.station.available_rent_bikes}</span>
-            <span>🅿️ ${props.station.available_return_bikes}</span>
-          </div>
-        </div>
-      `,
+        infoWindowContentDiv,
         {
           offset: [0, -30]
         }
       );
+      
+      infoWindow.open(map.value, marker.value);
+      renderInfoWindowContent(infoWindowContentDiv, props.station, 'leaflet');
       
       infoWindow.open(map.value, marker.value);
 
@@ -472,24 +457,19 @@ async function updateMapForNewStation() {
         }
       );
       
+      const infoWindowContentDiv = document.createElement('div');
+      infoWindowContentDiv.id = 'google-maps-info-window-content';
       const infoWindow = new google.maps.InfoWindow({
-        content: `
-        <div style="padding: 10px; max-width: 200px;">
-          <h4 style="margin: 0 0 8px 0; color: #2c3e50; font-weight: bold;">📍 ${props.station.sna}</h4>
-          <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${props.station.ar}</p>
-          <div style="display: flex; justify-content: space-between; font-size: 14px;">
-            <span>🚴 ${props.station.available_rent_bikes}</span>
-            <span>🅿️ ${props.station.available_return_bikes}</span>
-          </div>
-        </div>
-      `
+        content: infoWindowContentDiv
       });
 
       marker.value.addListener('click', () => {
         infoWindow.open(map.value, marker.value);
+        renderInfoWindowContent(infoWindowContentDiv, props.station);
       });
       
       infoWindow.open(map.value, marker.value);
+      renderInfoWindowContent(infoWindowContentDiv, props.station);
       
       // FIX: Register the new main marker so it can be cleared later
       const markerData = {
@@ -510,7 +490,7 @@ async function updateMapForNewStation() {
     nearbyStations.value = [];
     
     // Find nearby stations
-    await findNearbyStations();
+    await findNearbyStations(false);
     
     console.log('✅ Map updated successfully for new station');
     
@@ -677,7 +657,7 @@ async function changeTravelMode(mode) {
   }
 }
 
-async function findNearbyStations() {
+async function findNearbyStations(shouldScroll = false) {
   nearbyLoading.value = true;
   
   // Clear existing nearby markers before adding new ones
@@ -693,6 +673,11 @@ async function findNearbyStations() {
     
     nearbyStations.value = nearby.slice(0, 5);
     await addNearbyStationMarkers(nearbyStations.value);
+
+    // Scroll to the nearby section only if explicitly requested
+    if (shouldScroll && nearbySectionRef.value) {
+      nearbySectionRef.value.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     
   } catch (error) {
     console.error('Error finding nearby stations:', error);
@@ -726,10 +711,16 @@ function clearNearbyMarkers() {
 }
 
 async function addNearbyStationMarkers(nearbyStations) {
-  if (!map.value || nearbyStations.length === 0) return;
+  if (!map.value || nearbyStations.length === 0) {
+    console.log('Skipping addNearbyStationMarkers: map not ready or no nearby stations.');
+    return;
+  }
   
   console.log('📍 Adding markers for nearby stations:', nearbyStations.length);
   
+  // Ensure map is fully loaded before adding markers
+  await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for map to render
+
   for (const station of nearbyStations) {
     try {
       const position = {
@@ -737,6 +728,8 @@ async function addNearbyStationMarkers(nearbyStations) {
         lng: parseFloat(station.longitude)
       };
       
+      console.log(`Attempting to add marker for ${station.sna} at ${position.lat}, ${position.lng}`);
+
       if (usingFallbackMap.value) {
         const nearbyMarker = await LeafletMapService.createMarker(
           map.value,
@@ -749,17 +742,10 @@ async function addNearbyStationMarkers(nearbyStations) {
           }
         );
         
+        const infoWindowContentDiv = document.createElement('div');
+        infoWindowContentDiv.id = 'leaflet-nearby-info-window-content';
         const infoWindow = await LeafletMapService.createInfoWindow(
-          `
-          <div style="padding: 10px; max-width: 200px;">
-            <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${station.sna}</h4>
-            <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${station.ar}</p>
-            <div style="display: flex; justify-content: space-between; font-size: 14px;">
-              <span>🚴 ${station.available_rent_bikes}</span>
-              <span>🅿️ ${station.available_return_bikes}</span>
-            </div>
-          </div>
-        `,
+          infoWindowContentDiv,
           {
             offset: [0, -30]
           }
@@ -778,7 +764,9 @@ async function addNearbyStationMarkers(nearbyStations) {
         
         nearbyMarker.on('click', () => {
           handleNearbyStationClick(station.sno);
+          renderInfoWindowContent(infoWindowContentDiv, station, 'leaflet');
         });
+        console.log(`✅ Leaflet marker added for ${station.sna}`);
         
       } else {
         const nearbyMarker = await GoogleMapsService.createStandardMarker(
@@ -792,17 +780,10 @@ async function addNearbyStationMarkers(nearbyStations) {
           }
         );
         
+        const infoWindowContentDiv = document.createElement('div');
+        infoWindowContentDiv.id = 'google-maps-nearby-info-window-content';
         const infoWindow = new google.maps.InfoWindow({
-          content: `
-          <div style="padding: 10px; max-width: 200px;">
-            <h4 style="margin: 0 0 8px 0; color: #2c3e50;">${station.sna}</h4>
-            <p style="margin: 0 0 8px 0; font-size: 12px; color: #6c757d;">${station.ar}</p>
-            <div style="display: flex; justify-content: space-between; font-size: 14px;">
-              <span>🚴 ${station.available_rent_bikes}</span>
-              <span>🅿️ ${station.available_return_bikes}</span>
-            </div>
-          </div>
-        `
+          content: infoWindowContentDiv
         });
         
         const markerData = {
@@ -818,7 +799,9 @@ async function addNearbyStationMarkers(nearbyStations) {
         
         nearbyMarker.addListener('click', () => {
           handleNearbyStationClick(station.sno);
+          renderInfoWindowContent(infoWindowContentDiv, station);
         });
+        console.log(`✅ Google Maps marker added for ${station.sna}`);
       }
       
     } catch (error) {
@@ -826,7 +809,7 @@ async function addNearbyStationMarkers(nearbyStations) {
     }
   }
   
-  //console.log('✅ Added markers for all nearby stations');
+  console.log('✅ Finished adding markers for all nearby stations');
 }
 
 async function handleNearbyStationClick(stationSno) {
@@ -837,6 +820,12 @@ async function handleNearbyStationClick(stationSno) {
 
   // Emit event to parent, which will trigger the watcher to update the map
   emit('station-selected', stationSno);
+
+  // Scroll to the map section
+  if (mapContainer.value) {
+    await nextTick(); // Ensure DOM is updated after station change
+    mapContainer.value.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 function closeAllInfoWindows() {
@@ -881,6 +870,17 @@ async function toggleStreetView() {
         }
       );
       
+      // Add listener for when Google's native exit button is clicked
+      if (streetViewPanorama.value) {
+        streetViewPanorama.value.addListener('visible_changed', () => {
+          if (!streetViewPanorama.value.getVisible()) {
+            console.log('Google Street View exited natively. Returning to map view.');
+            showStreetView.value = false; // Update our internal state
+            // No need to call toggleStreetView directly, as the watcher on showStreetView will handle it
+          }
+        });
+      }
+      
       console.log('✅ Street View panorama created successfully');
       
     } catch (error) {
@@ -910,6 +910,28 @@ function getAvailabilityClass(count) {
   if (count === 0) return 'availability-none';
   if (count <= 4) return 'availability-low';
   return 'availability-good';
+}
+
+function formatStationName(name) {
+  const prefix = 'YouBike2.0_';
+  if (name.startsWith(prefix)) {
+    return name.substring(prefix.length);
+  }
+  return name;
+}
+
+// Function to render Vue component into info window
+function renderInfoWindowContent(container, station) {
+  // Clear previous content
+  container.innerHTML = '';
+  
+  const app = createApp(InfoWindowContent, {
+    station: station,
+      onGetDirections: () => getDirections(),
+      onToggleStreetView: () => toggleStreetView(),
+      onFindNearbyStations: () => findNearbyStations(true)
+    });
+  app.mount(container);
 }
 
 function closeModal() {
@@ -974,7 +996,7 @@ onUnmounted(() => {
   max-width: 900px;
   width: 100%;
   max-height: 90vh;
-  overflow: hidden;
+  overflow-y: auto; /* Allow modal to scroll if content exceeds max-height */
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
@@ -1323,23 +1345,28 @@ onUnmounted(() => {
   border-color: #007bff;
 }
 
-/* Mobile Responsive */
-@media (max-width: 768px) {
+
   .map-modal-overlay {
     padding: 10px;
   }
   
   .modal-content {
-    grid-template-columns: 1fr;
-    height: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Allow flex item to shrink */
+    max-height: none; /* Remove fixed max-height */
   }
   
   .map-section {
-    height: 300px;
+    height: auto; /* Allow flex-grow to control height */
+    flex-grow: 4; /* Make map section take 4 parts of available space */
+    flex-shrink: 0;
   }
   
   .info-section {
-    max-height: 400px;
+    flex-grow: 1; /* Make info section take 1 part of available space */
+    overflow-y: auto;
+    min-height: 0;
   }
   
   .station-stats {
@@ -1355,6 +1382,16 @@ onUnmounted(() => {
   
   .stat-number {
     font-size: 16px;
+  }
+
+@media (max-width: 480px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+  
+  .station-info {
+    flex-direction: column;
+    gap: 15px;
   }
 }
 </style>

@@ -62,7 +62,7 @@ class LeafletMapService {
     await this.loadLeaflet();
 
     const marker = L.marker([position.lat, position.lng], {
-      title: options.title || ''
+      title: this.formatStationName(options.title) || ''
     }).addTo(map);
 
     // Create enhanced icon styles based on selection state
@@ -116,7 +116,7 @@ class LeafletMapService {
             overflow: hidden;
             text-overflow: ellipsis;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          ">${options.title || ''}</div>
+          ">${this.formatStationName(options.title || '')}</div>
         </div>
       `;
     } else {
@@ -264,6 +264,14 @@ class LeafletMapService {
 
   toRadians(degrees) {
     return degrees * (Math.PI / 180);
+  }
+
+  formatStationName(name) {
+    const prefix = 'YouBike2.0_';
+    if (name.startsWith(prefix)) {
+      return name.substring(prefix.length);
+    }
+    return name;
   }
 
   async findNearbyStations(center, radius = 500, stations = []) {

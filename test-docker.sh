@@ -24,9 +24,16 @@ else
     echo "🗝️  Using Google Maps API Key: ${GOOGLE_MAPS_API_KEY:0:10}..."
 fi
 
-# Build the image with Google Maps API key
+# Set SSL certificate password (use environment variable or default)
+SSL_CERT_PASSWORD=${SSL_CERT_PASSWORD:-"TestPassword123!"}
+echo "🔑 Using SSL Certificate Password..."
+
+# Build the image with Google Maps API key and SSL password
 echo "🔨 Building Docker image..."
-if docker build --build-arg VITE_GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY" -t ubike-app-test .; then
+if docker build \
+    --build-arg VITE_GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS_API_KEY" \
+    --build-arg SSL_CERT_PASSWORD="$SSL_CERT_PASSWORD" \
+    -t ubike-app-test .; then
     echo "✅ Docker build successful"
 else
     echo "❌ Docker build failed"
@@ -35,8 +42,8 @@ fi
 
 # Run the container with both HTTP and HTTPS ports
 echo "🏃 Starting container on ports 8080 (HTTP) and 8443 (HTTPS)..."
-SSL_CERT_PASSWORD=${SSL_CERT_PASSWORD:-"TestPassword123!"}
 CONTAINER_ID=$(docker run -d -p 8080:8080 -p 8443:8443 \
+    -e ALLOWED_HOSTS=localhost \
     -e ASPNETCORE_ENVIRONMENT=Production \
     -e "ASPNETCORE_URLS=https://+:8443;http://+:8080" \
     -e SSL_CERT_PASSWORD="$SSL_CERT_PASSWORD" \

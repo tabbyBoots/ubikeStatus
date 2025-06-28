@@ -5,7 +5,7 @@ class GoogleMapsService {
     this.loader = new Loader({
       apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
       version: 'weekly',
-      libraries: ['places', 'geometry', 'marker']
+      libraries: ['places', 'geometry', 'marker', 'routes']
     });
     this.google = null;
     this.directionsService = null;
@@ -154,7 +154,7 @@ class GoogleMapsService {
     const marker = new google.maps.Marker({
       position: markerPosition,
       map: map,
-      title: options.title,
+      title: this.formatStationName(options.title),
       zIndex: isSelected ? 1000 : 100,
       icon: {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgIcon),
@@ -245,7 +245,7 @@ class GoogleMapsService {
     }
     
     markerDiv.textContent = '🚴';
-    markerDiv.title = title;
+    markerDiv.title = this.formatStationName(title);
     container.appendChild(markerDiv);
 
     // 標示鄰近站點距離樣式
@@ -292,7 +292,7 @@ class GoogleMapsService {
       //nameLabel.textContent = title;
       
       //刪除站名前綴字
-      nameLabel.textContent = title.replace(/^YouBike2\.0_/, '');
+      nameLabel.textContent = this.formatStationName(title);
       container.appendChild(nameLabel);
     }
 
@@ -424,6 +424,14 @@ class GoogleMapsService {
 
   toRadians(degrees) {
     return degrees * (Math.PI / 180);
+  }
+
+  formatStationName(name) {
+    const prefix = 'YouBike2.0_';
+    if (name.startsWith(prefix)) {
+      return name.substring(prefix.length);
+    }
+    return name;
   }
 
   getStreetViewUrl(lat, lng, options = {}) {

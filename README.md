@@ -2,17 +2,54 @@
 
 A real-time Taipei uBike station monitoring application that provides live availability data for YouBike stations across Taipei City.
 
+## 📚 Table of Contents
+
+- [🚴‍♂️ Features](#%EF%B8%8F-features)
+- [🛠️ Technology Stack](#%EF%B8%8F-technology-stack)
+  - [Frontend](#frontend)
+  - [Backend](#backend)
+  - [DevOps & Deployment](#devops--deployment)
+- [📋 Prerequisites](#%EF%B8%8F-prerequisites)
+- [🚀 Quick Start](#-quick-start)
+  - [1. Clone the Repository](#1-clone-the-repository)
+  - [2. Backend Setup](#2-backend-setup)
+  - [3. Frontend Setup](#3-frontend-setup)
+- [📁 Project Structure](#-project-structure)
+- [🔌 API Endpoints](#-api-endpoints)
+  - [Base URL](#base-url)
+  - [Get All Stations](#get-all-stations)
+  - [Get Stations by Area](#get-stations-by-area)
+- [🔧 Development](#-development)
+  - [Running in Development Mode](#running-in-development-mode)
+  - [API Documentation](#api-documentation)
+  - [Building for Production](#building-for-production)
+- [🚀 Deployment](#-deployment)
+  - [Docker Deployment (Recommended)](#docker-deployment-recommended)
+  - [Railway Deployment (Recommended for Production)](#railway-deployment-recommended-for-production)
+  - [GitHub Actions CI/CD](#github-actions-cicd)
+  - [Local Testing](#local-testing)
+- [📊 Data Source](#-data-source)
+- [🔧 Configuration](#-configuration)
+  - [Environment Variables](#environment-variables)
+  - [Google Maps API Setup (Optional)](#google-maps-api-setup-optional)
+- [Troubleshooting](#troubleshooting)
+- [📸 Screenshots](#-screenshots)
+- [🤝 Contributing](#-contributing)
+- [📝 License](#-license)
+- [🙏 Acknowledgments](#-acknowledgments)
+
 ## 🚴‍♂️ Features
 
 - **Real-time Data**: Live uBike station availability from Taipei City's official API
 - **Interactive Maps**: Integrated Google Maps with station locations and detailed information
 - **Favorites System**: Save and manage your favorite stations with persistent storage
-- **Advanced Filtering & Search**: 
+- **Advanced Filtering & Search**:
   - Filter by area/district with default "所有區域" (All Areas) selection
   - Filter by availability (bikes available, parking spaces available, favorites)
   - Real-time search by station name, address, or English name
   - Sorting by station name, area, or availability counts
   - One-click reset filters functionality
+  - Clear visual indicators for active filters
 - **Station Details**: View comprehensive information including:
   - Available bikes for rent
   - Available parking spaces
@@ -31,18 +68,18 @@ A real-time Taipei uBike station monitoring application that provides live avail
 ## 🛠️ Technology Stack
 
 ### Frontend
-- **Vue.js 3** (v3.5.13) - Progressive JavaScript framework with Composition API
-- **Vite** (v6.3.5) - Fast build tool and development server
-- **Pinia** (v3.0.3) - State management for Vue.js
-- **Vue Router** (v4.5.1) - Client-side routing
-- **Axios** (v1.10.0) - HTTP client for API requests
-- **Google Maps JavaScript API** (v1.16.8) - Interactive map integration for station locations
+- **Vue.js 3.x** - Progressive JavaScript framework with Composition API
+- **Vite 6.x** - Fast build tool and development server
+- **Pinia 3.x** - State management for Vue.js
+- **Vue Router 4.x** - Client-side routing
+- **Axios 1.x** - HTTP client for API requests
+- **Google Maps JavaScript API** - Interactive map integration for station locations
 - **Leaflet** - Alternative fallback map service with OpenStreetMap tiles
 
 ### Backend
 - **.NET 9** - Modern web API framework
 - **ASP.NET Core Web API** - RESTful API development
-- **OpenAPI/Swagger** - API documentation with Scalar UI (v2.5.0)
+- **OpenAPI/Swagger** - API documentation with Scalar UI
 - **HttpClient** - External API integration for real-time data fetching
 
 ### DevOps & Deployment
@@ -81,7 +118,7 @@ dotnet build
 dotnet run
 ```
 
-The backend API will be available at `https://localhost:7135`
+The backend API will be available at `http://localhost:5001`
 
 ### 3. Frontend Setup
 
@@ -99,7 +136,7 @@ The frontend will be available at `http://localhost:5173`
 ubikeStatus/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml          # CI/CD pipeline (moved from frontend/)
+│       └── deploy.yml          # CI/CD pipeline
 ├── backend/                    # .NET Web API
 │   ├── Controllers/           # API controllers
 │   │   └── uBikeController.cs # uBike endpoints
@@ -136,17 +173,25 @@ ubikeStatus/
 │   │   └── main.js        # Application entry
 │   ├── package.json       # Dependencies
 │   └── vite.config.js     # Vite configuration
-├── Dockerfile              # Multi-stage Docker build
+├── docker/
+│   └── docs/
+│       ├── DOCKER_DEPLOYMENT.md   # Detailed Docker deployment guide
+│       ├── DOCKER_SETUP.md        # Docker setup instructions
+│       └── QUICK_DEPLOY.md        # Quick Docker deployment guide
+├── Dockerfile              # Multi-stage Docker build for production
+├── Dockerfile.dev          # Dockerfile for development environment
 ├── .dockerignore          # Docker build optimization
 ├── docker-compose.yml     # Container orchestration
+├── exec_proj.sh           # Script to execute the project
 ├── test-docker.sh         # Docker testing script
-├── DOCKER_DEPLOYMENT.md   # Detailed deployment guide
+├── RAILWAY_DEPLOYMENT.md  # Detailed Railway deployment guide
+├── SECURITY_FIXES.md      # Document for security fixes
 └── README.md             # This file
 ```
 
 ## 🔌 API Endpoints
 
-### Base URL: `https://localhost:7135/api/ubike`
+### Base URL: `http://localhost:5001/api/ubike`
 
 #### Get All Stations
 ```http
@@ -212,7 +257,7 @@ Returns stations filtered by specific area.
 
 ### API Documentation
 
-When running in development mode, visit `https://localhost:7135/scalar/v1` to access the interactive API documentation.
+When running in development mode, visit `http://localhost:5001/scalar/v1` to access the interactive API documentation.
 
 ### Building for Production
 
@@ -246,13 +291,20 @@ docker-compose up --build
 
 #### Manual Docker Build
 ```bash
+# Note: Ensure VITE_GOOGLE_MAPS_API_KEY and SSL_CERT_PASSWORD are set in your environment
+export SSL_CERT_PASSWORD="your_secure_password"
+
 # Build the image
-docker build -t ubike-app .
+docker build \
+  --build-arg VITE_GOOGLE_MAPS_API_KEY="$VITE_GOOGLE_MAPS_API_KEY" \
+  --build-arg SSL_CERT_PASSWORD="$SSL_CERT_PASSWORD" \
+  -t ubike-app .
 
 # Run with HTTPS support
 docker run -p 8080:8080 -p 8443:8443 \
+  -e ALLOWED_HOSTS=localhost \
   -e ASPNETCORE_URLS="https://+:8443;http://+:8080" \
-  -e SSL_CERT_PASSWORD="your_secure_password" \
+  -e SSL_CERT_PASSWORD="$SSL_CERT_PASSWORD" \
   -e ASPNETCORE_Kestrel__Certificates__Default__Password="${SSL_CERT_PASSWORD}" \
   -e ASPNETCORE_Kestrel__Certificates__Default__Path="/https/aspnetapp.pfx" \
   ubike-app
@@ -265,6 +317,8 @@ docker run -p 8080:8080 -p 8443:8443 \
 - **Production Ready**: Configured for production deployment
 - **Development Mode**: Optional development container with hot-reload support
 - **Health Checks**: Container health monitoring capabilities
+
+For detailed Docker deployment instructions, see [docker/docs/DOCKER_DEPLOYMENT.md](docker/docs/DOCKER_DEPLOYMENT.md).
 
 ### Railway Deployment (Recommended for Production)
 
@@ -283,7 +337,7 @@ Key features:
 Automated deployment pipeline with comprehensive testing:
 
 - **Triggers**: Push to `main` branch and pull requests
-- **Build Process**: 
+- **Build Process**:
   1. **Frontend Pipeline**: Install dependencies → Build with Vite → Upload artifacts
   2. **Backend Pipeline**: Restore packages → Build with .NET 9 → Run tests → Upload artifacts
   3. **Docker Pipeline**: Multi-architecture build → Push to GitHub Container Registry
@@ -297,14 +351,12 @@ The workflow configuration is located at `.github/workflows/deploy.yml`.
 
 ### Local Testing
 
-Use the provided test script:
+Use the provided test script to build and run the application in a local Docker container. It automates environment variable and certificate password management.
 ```bash
 # Make executable and run
 chmod +x test-docker.sh
 ./test-docker.sh
 ```
-
-For detailed deployment instructions, see [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md).
 
 ## 📊 Data Source
 
@@ -327,6 +379,7 @@ VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 ```bash
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=https://+:8443;http://+:8080
+ALLOWED_HOSTS=localhost
 SSL_CERT_PASSWORD=your_secure_password_here
 ASPNETCORE_Kestrel__Certificates__Default__Password=${SSL_CERT_PASSWORD}
 ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
@@ -336,11 +389,57 @@ ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
 
 1. Visit [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select existing one
-3. Enable the Maps JavaScript API
-4. Create an API key with appropriate restrictions
-5. Add the key to your environment variables
+3. Enable the **Maps JavaScript API** and the **Directions API**.
+4. Create an API key with appropriate restrictions.
+5. Add the key to your environment variables.
 
 **Note**: The application includes Leaflet/OpenStreetMap as a fallback if Google Maps API is not configured.
+
+## Troubleshooting
+
+Here are some common issues and their solutions:
+
+### 1. Google Maps `RefererNotAllowedMapError`
+
+**Issue**: The map appears blank, and the console shows `RefererNotAllowedMapError`. This means your Google Maps API key is not authorized for the domain you are accessing the application from.
+
+**Solution**:
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Navigate to "APIs & Services" > "Credentials".
+3. Select the API key you are using.
+4. Under "Application restrictions", ensure "HTTP referrers (web sites)" is selected.
+5. Add `https://localhost:8443/*` (or the specific URL you are using) to the list of "Website restrictions". The `*` is crucial to allow all paths under that origin.
+6. **If running in Docker**: After updating the API key restrictions, you must rebuild your Docker image to ensure the frontend picks up the latest configuration.
+   ```bash
+   docker stop ubike-test && docker rm ubike-test # Stop and remove old container
+   docker rmi ubike-app-test # Remove old image
+   ./test-docker.sh # Rebuild and run
+   ```
+
+### 2. Docker Container Fails with `CryptographicException`
+**Issue**: The Docker container fails to start, and logs show `System.Security.Cryptography.CryptographicException: The certificate data cannot be read with the provided password, the password may be incorrect.`
+**Solution**: This error occurs when the password used to create the SSL certificate during the Docker build does not match the password provided at runtime.
+- The `test-docker.sh` script handles this automatically by using the same password for both build and run.
+- If building manually, ensure you pass the `SSL_CERT_PASSWORD` as a build argument and as an environment variable:
+  ```bash
+  # Use the same password for both build-arg and env var
+  export SSL_PASS="your_secure_password"
+  docker build --build-arg SSL_CERT_PASSWORD="$SSL_PASS" -t ubike-app .
+  docker run -e SSL_CERT_PASSWORD="$SSL_PASS" ... ubike-app
+  ```
+
+### 3. Backend Fails with `ArgumentException: Decoded string is not a valid IDN name`
+**Issue**: The application fails to start, particularly in a Docker environment, with an error related to an invalid IDN name.
+**Solution**: This is caused by an invalid value in the `AllowedHosts` configuration. For Docker, the host needs to be explicitly defined.
+- The `test-docker.sh` script sets `ALLOWED_HOSTS=localhost` automatically.
+- If running manually, add `-e ALLOWED_HOSTS=localhost` to your `docker run` command.
+- For non-Docker environments, check the `AllowedHosts` setting in `appsettings.json` or any `ASPNETCORE_ALLOWED_HOSTS` environment variable.
+
+### 4. Map Appears Blank with `TypeError: IntersectionObserver.observe: Argument 1 is not an object.`
+
+**Issue**: When opening the map modal or switching back from Street View, the map area is blank, and the console shows an `IntersectionObserver` error. This indicates a timing issue where the Google Maps API tries to initialize on a DOM element that is not yet fully rendered or available.
+
+**Solution**: This issue has been addressed in the application code by implementing a robust waiting mechanism that ensures the map container element is fully ready before the map initialization proceeds. If you encounter this after pulling the latest changes, ensure your local repository is up-to-date.
 
 ## 📸 Screenshots
 

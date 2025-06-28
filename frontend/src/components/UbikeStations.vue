@@ -1,8 +1,8 @@
 <template>
   <div class="container">
     <div class="header">
-      <h1>🚴 uBike 即時狀態查詢</h1>
-      <p>查詢台北市 uBike 2.0 即時租借狀況</p>
+      <h1>🚴 即時狀態查詢</h1>
+      <p>查詢台北市 YouBike 2.0 即時狀況</p>
     </div>
 
     <div class="controls">
@@ -36,50 +36,28 @@
       
       <div class="controls-row">
         <div class="filter-buttons">
-          <button 
-            class="btn btn-primary" 
-            :class="{ active: filterType === 'all' }"
-            @click="setFilter('all')"
-          >
-            全部站點
+          <button class="btn btn-primary" :class="{ active: filterType === 'favorites' }" @click="setFilter('favorites')">
+            ❤️ 我的最愛 ({{ favoritesStore.favoriteCount }})
           </button>
-          <button 
-            class="btn btn-secondary" 
-            :class="{ active: filterType === 'available' }"
-            @click="setFilter('available')"
-          >
+<button @click="toggleStats" class="btn btn-primary">
+  {{ showStats ? '隱藏統計資訊' : '統計資訊' }}
+</button>
+          <button class="btn btn-primary" :class="{ active: filterType === 'available' }" @click="setFilter('available')">
             有車可借
           </button>
-          <button 
-            class="btn btn-secondary" 
-            :class="{ active: filterType === 'parking' }"
-            @click="setFilter('parking')"
-          >
+          <button class="btn btn-primary" :class="{ active: filterType === 'parking' }" @click="setFilter('parking')">
             有位可停
-          </button>
-          <button 
-            class="btn btn-secondary" 
-            :class="{ active: filterType === 'favorites' }"
-            @click="setFilter('favorites')"
-          >
-            ❤️ 我的最愛 ({{ favoritesStore.favoriteCount }})
           </button>
         </div>
         
         <ExportButton />
+        <div class="stats-toggle">
+          
+        </div>
       </div>
     </div>
 
-    <div v-if="loading" class="loading">
-      <div>載入中...</div>
-    </div>
-
-    <div v-if="error" class="error">
-      <strong>錯誤：</strong>{{ error }}
-      <button @click="fetchStations" class="btn btn-primary" style="margin-left: 10px;">重新載入</button>
-    </div>
-
-    <div v-if="!loading && !error" class="stats">
+    <div v-if="showStats && !loading && !error" class="stats">
       <div class="stat-item">
         <div class="stat-number">{{ stats.totalStations }}</div>
         <div class="stat-label">總站點數</div>
@@ -144,7 +122,7 @@
           >
             <td class="station-name">
               <div>
-                <div class="name">{{ station.sna }}</div>
+                <div class="name">{{ formatStationName(station.sna) }}</div>
                 <div class="status" :class="station.act === 1 ? 'status-active' : 'status-inactive'">
                   {{ station.act === 1 ? '運作中' : '暫停服務' }}
                 </div>
@@ -179,7 +157,7 @@
       >
         <div class="station-header">
           <div>
-            <div class="station-name">{{ station.sna }}</div>
+            <div class="station-name">{{ formatStationName(station.sna) }}</div>
             <div class="station-id">站點編號：{{ station.sno }}</div>
           </div>
           <div class="station-actions">
@@ -239,6 +217,7 @@ const store = useUbikeStore();
 const favoritesStore = useFavoritesStore();
 
 const refreshInterval = ref(null);
+const showStats = ref(false); // Default to hidden
 
 // Computed properties
 const loading = computed(() => store.isLoading);
@@ -247,6 +226,11 @@ const stations = computed(() => store.stations);
 const areas = computed(() => store.areas);
 const stats = computed(() => store.stats);
 const viewMode = computed(() => store.viewMode);
+
+// Methods
+function toggleStats() {
+  showStats.value = !showStats.value;
+}
 
 // Custom filtered stations that handles favorites
 const filteredStations = computed(() => {
@@ -333,6 +317,14 @@ function resetFilters() {
   store.resetFilters();
 }
 
+function formatStationName(name) {
+  const prefix = 'YouBike2.0_';
+  if (name.startsWith(prefix)) {
+    return name.substring(prefix.length);
+  }
+  return name;
+}
+
 // Lifecycle
 onMounted(() => {
   fetchStations();
@@ -392,12 +384,12 @@ onUnmounted(() => {
 }
 
 .search-box {
-  flex: 1;
-  min-width: 200px;
+  flex: 2;
+  min-width: 120px;
 }
 
 .search-box input {
-  width: 100%;
+  width: 90%;
   padding: 10px 15px;
   border: 2px solid #e9ecef;
   border-radius: 8px;
@@ -440,6 +432,18 @@ onUnmounted(() => {
   background: #007bff;
   border-color: #007bff;
   color: white;
+}
+
+.btn-primary:hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+.btn-primary.active {
+  background-color: #0056b3;
+  border-color: #0056b3;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
 }
 
 .btn-secondary {
@@ -490,6 +494,11 @@ onUnmounted(() => {
 .stat-label {
   color: #6c757d;
   font-size: 14px;
+}
+
+.stats-toggle {
+  text-align: center;
+  margin-bottom: 20px;
 }
 
 .no-results {
@@ -694,10 +703,20 @@ onUnmounted(() => {
   .controls-row {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px; /* Adjust gap for better spacing in mobile */
   }
   
   .search-box {
-    min-width: auto;
+    min-width: auto; /* Allow content to dictate width */
+    width: 100%; /* Take full width */
+  }
+  
+  .area-select {
+    width: 100%; /* Make area select full width */
+  }
+
+  .area-select select {
+    width: 100%; /* Make area select dropdown full width */
   }
   
   .filter-buttons {

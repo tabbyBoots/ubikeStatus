@@ -152,10 +152,10 @@ export default {
   },
   mounted() {
     this.fetchStations()
-    // 每30秒自動更新資料
+    // 每60秒自動更新資料
     this.refreshInterval = setInterval(() => {
       this.fetchStations()
-    }, 30000)
+    }, 60000)
   },
   beforeUnmount() {
     if (this.refreshInterval) {

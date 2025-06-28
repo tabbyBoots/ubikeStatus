@@ -7,11 +7,11 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure allowed hosts from environment variable
-var allowedHosts = Environment.GetEnvironmentVariable("ALLOWED_HOSTS");
-if (!string.IsNullOrEmpty(allowedHosts))
-{
-    builder.Configuration["AllowedHosts"] = allowedHosts;
-}
+// var allowedHosts = Environment.GetEnvironmentVariable("ALLOWED_HOSTS");
+// if (!string.IsNullOrEmpty(allowedHosts))
+// {
+//     builder.Configuration["AllowedHosts"] = allowedHosts;
+// }
 
 // Configure Kestrel - use environment URLs or fallback to development defaults
 if (builder.Environment.IsDevelopment() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))

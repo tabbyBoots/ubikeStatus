@@ -13,7 +13,7 @@
     </button>
     
     <button 
-      class="export-btn secondary"
+      class="export-btn primary"
       @click="exportAll"
       :disabled="allStations.length === 0"
       title="匯出所有站點資料"
