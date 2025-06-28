@@ -18,7 +18,7 @@
       <div class="area-select">
         <select v-model="selectedArea" @change="filterStations">
           <option value="">所有區域</option>
-          <option v-for="area in areas" :key="area" :value="area">{{ area }}</option>
+          <option v-for="area in areas" :key="area" :value="area">{{ formatAreaName(area) }}</option>
         </select>
       </div>
       
@@ -100,16 +100,16 @@
         <div class="station-info">
           <div class="info-item">
             <div class="info-number bikes-available">{{ station.available_rent_bikes }}</div>
-            <div class="info-label">可借車輛</div>
+            <div class="info-label">可借數</div>
           </div>
           <div class="info-item">
             <div class="info-number slots-available">{{ station.available_return_bikes }}</div>
-            <div class="info-label">可停車位</div>
+            <div class="info-label">停車位</div>
           </div>
         </div>
 
         <div class="station-details">
-          <div><strong>區域：</strong>{{ station.sarea }}</div>
+          <div><strong>區域：</strong>{{ formatAreaName(station.sarea) }}</div>
           <div><strong>地址：</strong>{{ station.ar }}</div>
           <div><strong>總車位：</strong>{{ station.total }}</div>
           <div><strong>更新時間：</strong>{{ formatTime(station.mday) }}</div>
@@ -233,6 +233,9 @@ export default {
     },
     goToStation(sno) {
       this.$router.push(`/station/${sno}`)
+    },
+    formatAreaName(name) {
+      return name.replace('區', '');
     }
   }
 }

@@ -19,7 +19,7 @@
         <div class="area-select">
           <select v-model="selectedArea" @change="updateArea">
             <option value="">所有區域</option>
-            <option v-for="area in areas" :key="area" :value="area">{{ area }}</option>
+            <option v-for="area in areas" :key="area" :value="area">{{ formatAreaName(area) }}</option>
           </select>
         </div>
         
@@ -128,7 +128,7 @@
                 </div>
               </div>
             </td>
-            <td class="area">{{ station.sarea }}</td>
+            <td class="area">{{ formatAreaName(station.sarea) }}</td>
             <td class="bikes">
               <span class="availability-number" :class="getAvailabilityClass(station.available_rent_bikes)">
                 {{ station.available_rent_bikes }}
@@ -184,7 +184,7 @@
         </div>
 
         <div class="station-details">
-          <div><strong>區域：</strong>{{ station.sarea }}</div>
+          <div><strong>區域：</strong>{{ formatAreaName(station.sarea) }}</div>
           <div><strong>地址：</strong>{{ station.ar }}</div>
           <div><strong>總車位：</strong>{{ station.total }}</div>
           <div><strong>更新時間：</strong>{{ formatTime(station.mday) }}</div>
@@ -323,6 +323,10 @@ function formatStationName(name) {
     return name.substring(prefix.length);
   }
   return name;
+}
+
+function formatAreaName(name) {
+  return name.replace('區', '');
 }
 
 // Lifecycle

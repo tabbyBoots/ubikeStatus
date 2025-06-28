@@ -642,6 +642,7 @@ async function getDirections() {
     
     directionsResult.value = result;
     await GoogleMapsService.displayDirections(map.value, result);
+    closeAllInfoWindows();
   } catch (error) {
     console.error('Error getting directions:', error);
     alert('無法取得路線資訊，請稍後再試');
