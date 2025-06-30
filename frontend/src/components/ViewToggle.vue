@@ -22,6 +22,17 @@
       </svg>
       卡片
     </button>
+    <button 
+      class="toggle-btn"
+      :class="{ active: viewMode === 'map' }"
+      @click="setView('map')"
+      title="地圖檢視"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+      </svg>
+      地圖
+    </button>
   </div>
 </template>
 
@@ -59,7 +70,9 @@ function setView(mode) {
   font-size: 14px;
   font-weight: 500;
   color: #6c757d;
-  transition: all 0.2s ease;
+  transition-property: all;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
 }
 
 .toggle-btn:hover {

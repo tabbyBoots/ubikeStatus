@@ -136,7 +136,9 @@ function exportAll() {
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.2s ease;
+  /* transition-property: all; */
+  /* transition-duration: 0.2s; */
+  /* transition-timing-function: ease; */
   white-space: nowrap;
 }
 
