@@ -51,8 +51,23 @@
         </div>
         
         <ExportButton />
-        <div class="stats-toggle">
-          
+        
+        <!-- Center Point and Radius Filter Indicator -->
+        <div v-if="viewMode !== 'map' && store.currentCenterPoint" class="location-indicator">
+          <div class="location-info">
+            <span class="location-icon">📍</span>
+            <span class="location-text">
+              {{ getCenterPointDescription() }}
+            </span>
+          </div>
+          <button 
+            @click="toggleRadiusFilter" 
+            class="btn btn-sm radius-toggle"
+            :class="{ active: store.radiusFilterEnabled }"
+            :title="store.radiusFilterEnabled ? `關閉${getRadiusText()}範圍篩選` : `開啟${getRadiusText()}範圍篩選`"
+          >
+            🎯 {{ store.radiusFilterEnabled ? getRadiusText() : '全部' }}
+          </button>
         </div>
       </div>
     </div>
@@ -199,28 +214,16 @@
       :filtered-stations="filteredStationsForMap"
       @station-selected="handleStationSelected"
     />
-
-    <!-- Map Modal -->
-    <MapModal 
-      v-if="store.selectedStation"
-      :station="store.selectedStation"
-      :is-visible="store.showMapModal"
-      :all-stations="stations"
-      :is-main-view-map="viewMode === 'map'"
-      @close="store.hideStationMap()"
-      @station-selected="handleStationSelected"
-    />
   </div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useUbikeStore } from '@/stores/ubike';
 import { useFavoritesStore } from '@/stores/favorites';
 import ViewToggle from './ViewToggle.vue';
 import ExportButton from './ExportButton.vue';
 import FavoritesButton from './FavoritesButton.vue';
-import MapModal from './maps/MapModal.vue';
 import StationsMap from './maps/StationsMap.vue';
 
 const store = useUbikeStore();
@@ -319,14 +322,16 @@ function formatTime(timeString) {
 function goToStation(sno) {
   const station = store.getStationById(sno);
   if (station) {
-    store.showStationMap(station);
+    store.setCenterFromStation(station); // This will enable radius filter and set 1km radius
+    store.setViewMode('map'); // Switch to map view
   }
 }
 
 function handleStationSelected(sno) {
   const station = store.getStationById(sno);
   if (station) {
-    store.showStationMap(station);
+    store.setCenterFromStation(station);
+    store.setViewMode('map'); // Switch to map view
   }
 }
 
@@ -346,9 +351,44 @@ function formatAreaName(name) {
   return name.replace('區', '');
 }
 
+function getCenterPointDescription() {
+  if (store.isAllStationsMode) {
+    return '所有站點';
+  }
+  
+  if (!store.currentCenterPoint) return '';
+  
+  switch (store.centerPointSource) {
+    case 'gps':
+      return '目前位置';
+    case 'station':
+      const station = store.getStationById(store.selectedStationId);
+      return station ? `選定站點: ${formatStationName(station.sna)}` : '選定站點';
+    case 'map':
+      return '地圖中心';
+    case 'default':
+      return '預設位置';
+    default:
+      return '未知位置';
+  }
+}
+
+function toggleRadiusFilter() {
+  store.toggleRadiusFilter();
+}
+
+function getRadiusText() {
+  return store.centerPointSource === 'station' ? '1km' : '500m';
+}
+
 // Lifecycle
-onMounted(() => {
+onMounted(async () => {
   fetchStations();
+  store.radiusFilterEnabled = false; // Disable radius filter by default
+  
+  // Initialize center point for radius filtering
+  await initializeCenterPoint();
+  
   // Auto refresh every 60 seconds
   refreshInterval.value = setInterval(() => {
     if (!store.autoRefreshPaused) {
@@ -356,6 +396,35 @@ onMounted(() => {
     }
   }, 60000);
 });
+
+// Watch for center point changes to update table/card view
+watch(() => store.currentCenterPoint, (newCenter, oldCenter) => {
+  if (newCenter && oldCenter && 
+      (newCenter.lat !== oldCenter.lat || newCenter.lng !== oldCenter.lng)) {
+    console.log(`📍 Center point changed from ${store.centerPointSource}, updating table/card view`);
+    // The filteredStations computed property will automatically re-evaluate
+    // due to the reactive dependency on store.currentCenterPoint
+  }
+}, { deep: true });
+
+// Watch for radius filter toggle
+watch(() => store.radiusFilterEnabled, (enabled) => {
+  console.log(`🎯 Radius filter ${enabled ? 'enabled' : 'disabled'}, updating view`);
+});
+
+// Initialize center point for radius filtering
+async function initializeCenterPoint() {
+  try {
+    // Try to get user location first
+    const GoogleMapsService = (await import('@/services/GoogleMapsService')).default;
+    const userLocation = await GoogleMapsService.getCurrentLocation();
+    store.setCenterFromUserLocation(userLocation);
+    console.log('📍 User location obtained for radius filtering:', userLocation);
+  } catch (error) {
+    console.log('📍 User location not available, using default center for radius filtering');
+    store.initializeDefaultCenter();
+  }
+}
 
 onUnmounted(() => {
   if (refreshInterval.value) {
@@ -642,6 +711,61 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* Location Indicator Styles */
+.location-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.location-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #495057;
+}
+
+.location-icon {
+  font-size: 14px;
+}
+
+.location-text {
+  font-weight: 500;
+}
+
+.radius-toggle {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: #6c757d;
+  border-color: #6c757d;
+  color: white;
+}
+
+.radius-toggle:hover {
+  background: #5a6268;
+  border-color: #5a6268;
+}
+
+.radius-toggle.active {
+  background: #28a745;
+  border-color: #28a745;
+}
+
+.radius-toggle.active:hover {
+  background: #218838;
+  border-color: #218838;
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 /* Card Styles */

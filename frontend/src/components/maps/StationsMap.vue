@@ -23,7 +23,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
+import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue';
 import GoogleMapsService from '@/services/GoogleMapsService';
 import LeafletMapService from '@/services/LeafletMapService';
 import { useUbikeStore } from '@/stores/ubike';
@@ -80,11 +80,10 @@ function debounce(func, wait) {
   };
 }
 
-// Enhanced radius logic based on zoom level
+// Enhanced radius logic based on zoom level and center source
 function getRadiusForZoom(zoom) {
-  //if (zoom >= 17) return 1000; // 1km for close-up view (zoom 17+)
-  //if (zoom >= 15) return 3000; // 3km for medium view (zoom 15-16)
-  return 1000; // 5km for wide view (zoom <15)
+  // Use 1km for station-centered views, 500m for others
+  return ubikeStore.centerPointSource === 'station' ? 1000 : 500;
 }
 
 // Debounced handlers for map events
@@ -94,9 +93,11 @@ const debouncedZoomChange = debounce(handleMapZoomChange, 200);
 // Note: We no longer use filteredStations watcher since we now use dynamic center-based filtering
 
 onMounted(() => {
-  if (!mapInitialized.value) {
-    initializeMap();
-  }
+  nextTick(() => {
+    if (!mapInitialized.value) {
+      initializeMap();
+    }
+  });
 });
 
 
@@ -108,13 +109,55 @@ watch(userLocation, async (newLocation) => {
   await renderMapContent();
 });
 
-// Watch for changes in filtered stations to update map when filters change
-watch(() => props.filteredStations, async (newFilteredStations) => {
-  console.log('Watcher: filteredStations changed. New count:', newFilteredStations?.length);
-  if (!mapInitialized.value) return;
+watch(() => ubikeStore.selectedStation, async (newStation) => {
+  if (newStation && mapInitialized.value) {
+    // Wait for the marker to be available
+    let attempts = 0;
+    const maxAttempts = 10;
+    const delay = 100; // ms
+    let marker = null;
+    let infoWindow = null;
+
+    while ((!marker || !infoWindow) && attempts < maxAttempts) {
+      marker = currentMarkers.value.get(newStation.sno);
+      infoWindow = currentInfoWindows.value.get(newStation.sno);
+      if (!marker || !infoWindow) {
+        console.log(`Waiting for marker for station ${newStation.sno}... Attempt ${attempts + 1}/${maxAttempts}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        attempts++;
+      }
+    }
+
+    if (marker && infoWindow) {
+      if (currentOpenInfoWindow.value) {
+        currentOpenInfoWindow.value.close();
+      }
+      renderInfoWindowContent(infoWindow.getContent(), newStation);
+      infoWindow.open(mapInstance.value, marker);
+      currentOpenInfoWindow.value = infoWindow;
+    } else {
+      console.warn(`Marker or InfoWindow not found for selected station ${newStation.sno} after ${maxAttempts} attempts.`);
+    }
+  }
+});
+
+
+// Watch for changes in store's center point to re-center map
+watch(() => ubikeStore.currentCenterPoint, async (newCenter, oldCenter) => {
+  console.log('Watcher: store center point changed:', newCenter, 'source:', ubikeStore.centerPointSource);
+  if (!mapInitialized.value || !newCenter) return;
   
-  console.log('Watcher: filteredStations changed with map initialized, updating map content.');
-  await renderMapContent();
+  // Only re-center if this is a significant change (not just map dragging)
+  if (ubikeStore.centerPointSource === 'station') {
+    console.log('Watcher: Re-centering map to selected station');
+    if (usingFallbackMap.value) {
+      mapInstance.value.setView([newCenter.lat, newCenter.lng], DEFAULT_ZOOM);
+    } else {
+      mapInstance.value.setCenter(newCenter);
+      mapInstance.value.setZoom(DEFAULT_ZOOM);
+    }
+    await renderMapContent();
+  }
 }, { deep: true });
 
 onUnmounted(() => {
@@ -135,8 +178,13 @@ async function initializeMap() {
 
   let initialCenter = TAIPEI_CITY_HALL_LOCATION; // Default to Taipei City Hall
 
-  // Attempt to get user location only once at the start
-  if (!userLocation.value) { // Only try to get location if not already set
+  // Check if there's already a center point set in the store (e.g., from selected station)
+  if (ubikeStore.currentCenterPoint) {
+    initialCenter = ubikeStore.currentCenterPoint;
+    console.log('initializeMap: Using store center point:', initialCenter, 'source:', ubikeStore.centerPointSource);
+  }
+  // Attempt to get user location only if no center point is set and user location not already obtained
+  else if (!userLocation.value) { // Only try to get location if not already set
     try {
       const position = await GoogleMapsService.getCurrentLocation();
       userLocation.value = position;
@@ -161,13 +209,36 @@ async function initializeMap() {
     }
   }
 
-  // Ensure mapDiv is an HTMLElement before proceeding
-  if (!(mapDiv.value instanceof HTMLElement)) {
-    console.error('initializeMap: mapDiv is not an HTMLElement, cannot initialize map.');
+  // Enhanced DOM readiness check with retry mechanism
+  let attempts = 0;
+  const maxAttempts = 10;
+  const delay = 100; // ms
+  
+  while ((!mapDiv.value || !(mapDiv.value instanceof HTMLElement)) && attempts < maxAttempts) {
+    console.log(`initializeMap: Waiting for mapDiv to be ready... Attempt ${attempts + 1}/${maxAttempts}`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+    attempts++;
+  }
+  
+  if (!mapDiv.value || !(mapDiv.value instanceof HTMLElement)) {
+    console.error('initializeMap: mapDiv is not an HTMLElement after multiple attempts, cannot initialize map.');
     error.value = '地圖容器未準備好，無法顯示地圖。';
     loading.value = false;
     return;
   }
+  
+  // Ensure container has proper dimensions and is in DOM
+  mapDiv.value.style.width = '100%';
+  mapDiv.value.style.height = '100%';
+  mapDiv.value.style.minHeight = '400px';
+  mapDiv.value.style.display = 'block';
+  mapDiv.value.style.visibility = 'visible';
+  mapDiv.value.style.position = 'relative';
+  
+  // Force DOM reflow to ensure container is ready
+  void mapDiv.value.offsetHeight;
+  
+  console.log('initializeMap: ✅ mapDiv is ready, proceeding with map initialization.');
 
   // Proceed with map initialization using the determined initialCenter
   try {
@@ -227,7 +298,7 @@ async function initializeMap() {
 
     const service = usingFallbackMap.value ? LeafletMapService : GoogleMapsService;
     // Use filteredStations instead of props.stations to respect user filters
-    const stationsInRadius = await service.findNearbyStations(center, radius, props.filteredStations);
+    const stationsInRadius = await service.findNearbyStations(center, radius, props.stations);
     console.log('renderMapContent: Result of findNearbyStations:', stationsInRadius);
     
     // Update the displayed stations based on this new filtered list
@@ -273,6 +344,13 @@ async function useDefaultLocation() {
 async function handleMapCenterChange() {
   console.log('handleMapCenterChange: Map center changed, updating stations.');
   if (!mapInstance.value) return;
+  
+  // Update the store's center point when map is moved
+  const center = usingFallbackMap.value 
+    ? { lat: mapInstance.value.getCenter().lat, lng: mapInstance.value.getCenter().lng }
+    : { lat: mapInstance.value.getCenter().lat(), lng: mapInstance.value.getCenter().lng() };
+  
+  ubikeStore.setCenterFromMap(center);
   
   updatingStations.value = true;
   try {
@@ -487,9 +565,6 @@ function renderInfoWindowContent(container, station) {
       currentInfoWindows.value.forEach(iw => iw.close());
       selectedStationForStreetView.value = station;
       showStreetViewModal.value = true;
-    },
-    onFindNearbyStations: () => {
-      console.log('Find Nearby Stations for', station.sna);
     }
   });
   app.mount(container);

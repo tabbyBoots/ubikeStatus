@@ -1,6 +1,22 @@
 import { defineStore } from 'pinia';
 import ubikeApi from '../api/ubike';
 
+const TAIPEI_CITY_HALL_LOCATION = { lat: 25.033964, lng: 121.564576 };
+const RADIUS_500M = 500; // 500 meters for general use
+const RADIUS_1KM = 1000; // 1000 meters for station-centered views
+
+// Helper function to calculate distance between two points
+function calculateDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // Distance in meters
+}
+
 export const useUbikeStore = defineStore('ubike', {
     state: () => ({
         stations: [],
@@ -13,13 +29,20 @@ export const useUbikeStore = defineStore('ubike', {
         sortBy: 'sna',
         sortOrder: 'asc',
         selectedStation: null,
+        selectedStationId: null, // Track selected station ID
         showMapModal: false,
         autoRefreshPaused: false,
-        activeModals: new Set()
+        activeModals: new Set(),
+        // New center point tracking
+        currentCenterPoint: null,
+        centerPointSource: 'default', // 'gps', 'station', 'map', 'default'
+        radiusFilterEnabled: false, // Default to false for "All Stations" mode
+        userLocationAvailable: false
     }),
     getters: {
         areas: (state) => [...new Set(state.stations.map(s => s.sarea))].sort(),
         filteredStations: (state) => {
+            console.log('Computing filteredStations. View mode:', state.viewMode, 'Radius filter enabled:', state.radiusFilterEnabled, 'Center point source:', state.centerPointSource);
             let filtered = [...state.stations];
 
             // Area filter
@@ -52,6 +75,23 @@ export const useUbikeStore = defineStore('ubike', {
                     break;
             }
 
+            // Radius filter
+            if (state.radiusFilterEnabled && state.currentCenterPoint) {
+                const radius = state.centerPointSource === 'station' ? RADIUS_1KM : RADIUS_500M;
+                filtered = filtered.filter(station => {
+                    if (!station.latitude || !station.longitude) return false;
+                    
+                    const distance = calculateDistance(
+                        state.currentCenterPoint.lat,
+                        state.currentCenterPoint.lng,
+                        parseFloat(station.latitude),
+                        parseFloat(station.longitude)
+                    );
+                    
+                    return distance <= radius;
+                });
+            }
+
             // Sorting
             filtered.sort((a, b) => {
                 let aVal = a[state.sortBy];
@@ -80,7 +120,18 @@ export const useUbikeStore = defineStore('ubike', {
             activeStations: state.stations.filter(s => s.act === 1).length,
             totalBikes: state.stations.reduce((sum, s) => sum + s.available_rent_bikes, 0),
             totalSlots: state.stations.reduce((sum, s) => sum + s.available_return_bikes, 0)
-        })
+        }),
+        // New getter to check if we're in "All Stations" mode
+        isAllStationsMode: (state) => {
+            return !state.searchTerm && 
+                   !state.selectedArea && 
+                   state.filterType === 'all' && 
+                   state.centerPointSource !== 'station';
+        },
+        // Get current radius based on center source
+        currentRadius: (state) => {
+            return state.centerPointSource === 'station' ? RADIUS_1KM : RADIUS_500M;
+        }
     },
     actions: {
         async fetchStations() {
@@ -103,6 +154,10 @@ export const useUbikeStore = defineStore('ubike', {
             this.selectedArea = area;
         },
         setViewMode(mode) {
+            // When switching away from map mode, reset to "All Stations" mode
+            if (this.viewMode === 'map' && mode !== 'map') {
+                this.resetToAllStations();
+            }
             this.viewMode = mode;
             localStorage.setItem('ubikeViewMode', mode);
         },
@@ -118,7 +173,8 @@ export const useUbikeStore = defineStore('ubike', {
         },
         showStationMap(station) {
             this.selectedStation = station;
-            this.showMapModal = true;
+            this.setCenterFromStation(station);
+            this.setViewMode('map');
         },
         hideStationMap() {
             this.showMapModal = false;
@@ -141,6 +197,48 @@ export const useUbikeStore = defineStore('ubike', {
             this.activeModals.delete(reason);
             this.autoRefreshPaused = this.activeModals.size > 0;
             console.log(`🔄 Auto-refresh ${this.autoRefreshPaused ? 'still paused' : 'resumed'}. Removed: ${reason}. Active modals:`, Array.from(this.activeModals));
+        },
+        // Center point management actions
+        setCenterPoint(location, source = 'unknown') {
+            this.currentCenterPoint = location;
+            this.centerPointSource = source;
+            console.log(`📍 Center point updated to ${location.lat.toFixed(6)}, ${location.lng.toFixed(6)} (source: ${source})`);
+        },
+        setCenterFromUserLocation(location) {
+            this.setCenterPoint(location, 'gps');
+            this.userLocationAvailable = true;
+        },
+        setCenterFromStation(station) {
+            if (station && station.latitude && station.longitude) {
+                const location = {
+                    lat: parseFloat(station.latitude),
+                    lng: parseFloat(station.longitude)
+                };
+                this.setCenterPoint(location, 'station');
+                this.selectedStationId = station.sno;
+                this.radiusFilterEnabled = true; // Enable radius filtering for station-centered view
+            }
+        },
+        setCenterFromMap(location) {
+            this.setCenterPoint(location, 'map');
+        },
+        initializeDefaultCenter() {
+            if (!this.currentCenterPoint) {
+                this.setCenterPoint(TAIPEI_CITY_HALL_LOCATION, 'default');
+            }
+        },
+        toggleRadiusFilter() {
+            this.radiusFilterEnabled = !this.radiusFilterEnabled;
+            console.log(`🎯 Radius filter ${this.radiusFilterEnabled ? 'enabled' : 'disabled'}`);
+        },
+        // Reset to "All Stations" mode
+        resetToAllStations() {
+            this.currentCenterPoint = null;
+            this.centerPointSource = 'default';
+            this.radiusFilterEnabled = false;
+            this.selectedStationId = null;
+            this.selectedStation = null;
+            console.log('📍 Reset to "All Stations" mode');
         }
     }
 });
