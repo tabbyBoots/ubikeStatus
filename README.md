@@ -42,6 +42,8 @@ A real-time Taipei uBike station monitoring application that provides live avail
 
 - **Real-time Data**: Live uBike station availability from Taipei City's official API
 - **Interactive Maps**: Integrated Google Maps with station locations and detailed information
+  - **Smart Marker Management**: Dynamic station markers that properly appear/disappear based on map location
+  - **Location-Based Filtering**: Automatic 1km radius filtering around map center with proper cleanup
 - **Favorites System**: Save and manage your favorite stations with persistent storage
 - **Advanced Filtering & Search**:
   - Filter by area/district with default "所有區域" (All Areas) selection
@@ -440,6 +442,26 @@ Here are some common issues and their solutions:
 **Issue**: When opening the map modal or switching back from Street View, the map area is blank, and the console shows an `IntersectionObserver` error. This indicates a timing issue where the Google Maps API tries to initialize on a DOM element that is not yet fully rendered or available.
 
 **Solution**: This issue has been addressed in the application code by implementing a robust waiting mechanism that ensures the map container element is fully ready before the map initialization proceeds. If you encounter this after pulling the latest changes, ensure your local repository is up-to-date.
+
+### 5. Map Markers Not Disappearing When Moving Map (FIXED)
+
+**Issue**: When switching to map mode and moving the map center, some station markers (especially those from the default MRT Taipei City Hall location) would not disappear even when they were far from the current map center. Some nearby stations would also persist incorrectly.
+
+**Solution**: This issue has been completely resolved in the latest version with comprehensive map marker management improvements:
+- **Fixed Race Conditions**: Added concurrency control to prevent multiple marker updates from interfering with each other
+- **Enhanced State Tracking**: Improved tracking of which stations are currently displayed on the map
+- **Robust Cleanup Process**: Better marker removal logic with proper error handling and comprehensive logging
+- **Force Clear Functionality**: Added ability to completely clear all markers when switching between different location sources
+- **Improved Event Handling**: Enhanced guards to prevent unnecessary updates during ongoing operations
+
+**What's Fixed**:
+- Default location (MRT Taipei City Hall) stations now properly disappear when moving the map
+- All markers outside the 1km radius are correctly removed
+- No more duplicate or persistent markers from previous locations
+- Consistent behavior across all location sources (GPS, default, selected station)
+- Better performance with reduced redundant operations
+
+If you encounter any marker-related issues, check the browser console for detailed logging that shows which stations are being added/removed during map interactions.
 
 ## 📸 Screenshots
 
